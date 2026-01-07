@@ -1,4 +1,3 @@
-
 version: '3.8'
 
 services:
@@ -6,26 +5,3 @@ services:
     build: .
     ports:
       - "8080:80"
-    networks:
-      - sentinel-net
-
-  n8n:
-    image: n8nio/n8n:latest
-    ports:
-      - "5678:5678"
-    environment:
-      - N8N_HOST=localhost
-      - N8N_PORT=5678
-      - N8N_PROTOCOL=http
-      - WEBHOOK_URL=http://localhost:5678/
-    volumes:
-      - n8n_data:/home/node/.n8n
-    networks:
-      - sentinel-net
-
-networks:
-  sentinel-net:
-    driver: bridge
-
-volumes:
-  n8n_data:
