@@ -1,0 +1,5 @@
+{
+  "name": "Firewall Sentinel AI",
+  "description": "A professional security auditing tool that leverages AI to analyze firewall configurations and provide actionable hardening suggestions.",
+  "requestFramePermissions": []
+}
