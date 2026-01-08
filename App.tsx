@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ShieldCheck, 
   Terminal, 
@@ -15,6 +15,8 @@ import { AuditConfig, FirewallReport, RiskLevel } from './types';
 import SetupForm from './components/SetupForm';
 import AuditReport from './components/AuditReport';
 
+const APP_VERSION = "1.3.0-ULTRA-SAFE";
+
 const App: React.FC = () => {
   const [isAuditing, setIsAuditing] = useState(false);
   const [report, setReport] = useState<FirewallReport | null>(null);
@@ -26,27 +28,27 @@ const App: React.FC = () => {
     webhookUrl: ''
   });
 
+  useEffect(() => {
+    console.log(`%c Sentinel AI ${APP_VERSION} Loaded `, "background: #1e293b; color: #38bdf8; font-weight: bold; padding: 4px; border-radius: 4px;");
+  }, []);
+
   const handleRunAudit = async (auditConfig: AuditConfig) => {
     setIsAuditing(true);
     setError(null);
-    setReport(null); // Clear previous report to prevent stale data issues
+    setReport(null);
     setConfig(auditConfig);
 
-    // Demo Mode Handler
+    // Demo Mode
     if (auditConfig.webhookUrl.includes('example.com') || auditConfig.webhookUrl.includes('test-audit')) {
       setTimeout(() => {
-        setReport(auditConfig.vendor === 'paloalto' ? MOCK_REPORT_PA : MOCK_REPORT_FORTINET);
+        setReport(MOCK_REPORT_FORTINET);
         setIsAuditing(false);
-      }, 1500);
+      }, 1000);
       return;
     }
 
     try {
-      if (!auditConfig.webhookUrl) {
-        throw new Error("n8n Webhook URL is required.");
-      }
-
-      console.log("Initiating audit request to:", auditConfig.webhookUrl);
+      console.log("Fetching from n8n...");
       const response = await fetch(auditConfig.webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -54,43 +56,38 @@ const App: React.FC = () => {
       });
 
       if (!response.ok) {
-        throw new Error(`n8n Error ${response.status}: ${response.statusText}`);
+        throw new Error(`n8n response error: ${response.status}`);
       }
 
       const data = await response.json();
-      console.log("Raw data received from n8n:", data);
+      console.log("RAW DATA FROM N8N:", data);
       
-      // Robust n8n response normalization
-      let reportData: any = null;
+      // 1. NORMALIZE: n8n often returns [ { ... } ]
+      let rawObj = Array.isArray(data) ? data[0] : data;
       
-      if (Array.isArray(data)) {
-        // Typical n8n: array of items
-        reportData = data[0];
-      } else if (data && typeof data === 'object') {
-        // Check if data is wrapped in a property like 'data' or 'body'
-        if (data.data && Array.isArray(data.data)) reportData = data.data[0];
-        else if (data.body) reportData = data.body;
-        else reportData = data;
+      // 2. SEARCH: If n8n nested the result (common in AI nodes)
+      if (rawObj?.json) rawObj = rawObj.json;
+      else if (rawObj?.body) rawObj = rawObj.body;
+      else if (rawObj?.output) rawObj = rawObj.output;
+
+      // 3. VALIDATE & REPAIR: Ensure the object is not 'undefined' and has 'findings'
+      if (!rawObj || typeof rawObj !== 'object') {
+        throw new Error("The AI Agent did not return a valid JSON object. Check your n8n 'Respond to Webhook' node.");
       }
 
-      if (!reportData || typeof reportData !== 'object') {
-        console.error("Failed to normalize report data:", data);
-        throw new Error("The AI Agent returned data in an unrecognized format. Check the n8n workflow output.");
-      }
+      const safeReport: FirewallReport = {
+        overallScore: Number(rawObj.overallScore) || 0,
+        summary: String(rawObj.summary || "No summary provided."),
+        // CRITICAL FIX: Ensure findings is NEVER undefined
+        findings: Array.isArray(rawObj.findings) ? rawObj.findings : [],
+        deviceInfo: rawObj.deviceInfo || { hostname: 'Unknown', firmware: 'Unknown', uptime: 'Unknown' }
+      };
 
-      // Final check for expected properties to ensure it's actually the report
-      if (!('findings' in reportData) && !('overallScore' in reportData)) {
-        console.warn("Report data missing expected fields, searching deeper...", reportData);
-        // Sometimes n8n puts the actual output inside a 'json' or 'output' property
-        if (reportData.json) reportData = reportData.json;
-        else if (reportData.output) reportData = reportData.output;
-      }
-
-      console.log("Successfully normalized report:", reportData);
-      setReport(reportData);
+      console.log("FINAL VALIDATED REPORT:", safeReport);
+      setReport(safeReport);
     } catch (err: any) {
-      console.error("Audit processing error:", err);
-      setError(err.message || "An unexpected error occurred during the audit.");
+      console.error("CRITICAL ERROR:", err);
+      setError(err.message || "Unknown error occurred.");
     } finally {
       setIsAuditing(false);
     }
@@ -101,9 +98,9 @@ const App: React.FC = () => {
     setError(null);
     setReport(null);
     setTimeout(() => {
-      setReport(config.vendor === 'paloalto' ? MOCK_REPORT_PA : MOCK_REPORT_FORTINET);
+      setReport(MOCK_REPORT_FORTINET);
       setIsAuditing(false);
-    }, 1200);
+    }, 500);
   };
 
   return (
@@ -115,11 +112,7 @@ const App: React.FC = () => {
               <ShieldCheck className="w-8 h-8 text-blue-400" />
               <span className="text-xl font-bold tracking-tight">Sentinel <span className="text-blue-400">AI</span></span>
             </div>
-            <div className="hidden md:flex space-x-2">
-              <span className="px-3 py-2 rounded-md text-sm font-medium bg-blue-600 text-white shadow-md">
-                Audit Dashboard
-              </span>
-            </div>
+            <div className="text-[10px] bg-slate-800 px-2 py-1 rounded text-slate-400 font-mono">SAFE_MODE v1.3</div>
           </div>
         </div>
       </nav>
@@ -128,93 +121,58 @@ const App: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-1">
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 sticky top-24">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center space-x-2 text-slate-800">
-                  <Terminal className="w-5 h-5" />
-                  <h2 className="text-lg font-bold">Connection</h2>
-                </div>
-              </div>
+              <h2 className="text-lg font-bold mb-6 flex items-center space-x-2">
+                <Terminal className="w-5 h-5 text-blue-500" />
+                <span>Configuration</span>
+              </h2>
               <SetupForm 
                 onSubmit={handleRunAudit} 
                 isLoading={isAuditing} 
                 initialValues={config} 
                 onConfigChange={setConfig}
               />
-              <div className="mt-8 p-4 bg-blue-50 rounded-lg border border-blue-100">
-                <div className="flex items-start space-x-3 text-blue-700">
-                  <Info className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                  <div className="text-sm">
-                    <p className="font-semibold mb-1 text-xs uppercase tracking-wider">Help</p>
-                    <p className="opacity-90 text-xs">Ensure your n8n Webhook is set to "Respond: Using 'Respond to Webhook' Node" for best results.</p>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
 
           <div className="lg:col-span-2">
             {isAuditing ? (
               <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 flex flex-col items-center justify-center min-h-[500px]">
-                <div className="relative">
-                  <div className="w-20 h-20 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
-                  <ShieldCheck className="w-10 h-10 text-blue-600 absolute inset-0 m-auto animate-pulse" />
-                </div>
-                <h3 className="mt-8 text-xl font-bold text-slate-800">Running AI Security Audit...</h3>
-                <p className="text-slate-500 mt-2">Connecting to your n8n agent</p>
+                <div className="w-12 h-12 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
+                <h3 className="mt-6 text-lg font-bold text-slate-800">Agent Processing Data...</h3>
               </div>
             ) : report ? (
               <AuditReport report={report} />
             ) : error ? (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-8 flex flex-col items-center text-center">
-                <AlertTriangle className="w-12 h-12 text-red-500 mb-4" />
-                <h3 className="text-xl font-bold text-red-800">Audit Failed</h3>
-                <p className="text-red-600 mt-2 max-w-md">{error}</p>
-                <div className="flex space-x-4 mt-6">
-                  <button onClick={() => setError(null)} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Try Again</button>
-                  <button onClick={loadDemoAudit} className="px-4 py-2 bg-slate-800 text-white rounded-lg flex items-center space-x-2"><Sparkles className="w-4 h-4 text-blue-400"/><span>Demo Mode</span></button>
-                </div>
+              <div className="bg-red-50 border border-red-200 rounded-xl p-8 text-center">
+                <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+                <h3 className="text-xl font-bold text-red-800">Audit Processing Error</h3>
+                <p className="text-red-600 mt-2">{error}</p>
+                <button onClick={() => setError(null)} className="mt-6 px-6 py-2 bg-red-600 text-white rounded-lg">Reset & Try Again</button>
               </div>
             ) : (
               <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-12 flex flex-col items-center justify-center min-h-[500px] text-center">
                 <FileSearch className="w-16 h-16 text-slate-200 mb-6" />
-                <h3 className="text-2xl font-bold text-slate-800">No Audit Active</h3>
-                <p className="text-slate-500 mt-2 max-w-md">Configure your connection details to the left and initiate a scan to see security findings.</p>
-                <button onClick={loadDemoAudit} className="mt-8 px-6 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 flex items-center space-x-2 shadow-lg group">
-                  <Sparkles className="w-5 h-5 text-blue-400 group-hover:scale-110 transition-transform" />
-                  <span>Explore with Demo Data</span>
+                <h3 className="text-2xl font-bold text-slate-800">Ready to Scan</h3>
+                <p className="text-slate-500 mt-2 max-w-md">Connect to your n8n workflow to analyze your firewall configuration.</p>
+                <button onClick={loadDemoAudit} className="mt-8 px-6 py-3 bg-slate-900 text-white rounded-xl font-bold flex items-center space-x-2 shadow-lg hover:scale-105 transition-transform">
+                  <Sparkles className="w-5 h-5 text-blue-400" />
+                  <span>Use Demo Mock Data</span>
                 </button>
               </div>
             )}
           </div>
         </div>
       </main>
-
-      <footer className="bg-white border-t border-slate-200 py-6">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-slate-400 text-xs">
-          © 2024 Sentinel AI Firewall Auditor.
-        </div>
-      </footer>
     </div>
   );
 };
 
-// Mock data constants...
 const MOCK_REPORT_FORTINET: FirewallReport = {
   overallScore: 72,
-  summary: "The FortiGate configuration shows a generally healthy posture but has several high-risk 'Any-Any' rules and outdated firmware.",
-  deviceInfo: { hostname: "HQ-FW-01", firmware: "v7.2.4", uptime: "45 Days" },
+  summary: "Mock summary for demo purposes.",
+  deviceInfo: { hostname: "DEMO-FW", firmware: "v1.0", uptime: "1 Day" },
   findings: [
-    { id: "1", title: "Public SSH Access", category: "Management", risk: RiskLevel.CRITICAL, description: "SSH is open to the world.", recommendation: "Restrict to management subnet." },
-    { id: "2", title: "Permissive Rule", category: "Traffic", risk: RiskLevel.HIGH, description: "Any-Any rule detected.", recommendation: "Apply principle of least privilege." }
-  ]
-};
-
-const MOCK_REPORT_PA: FirewallReport = {
-  overallScore: 65,
-  summary: "Palo Alto Networks audit reveals several security policies with 'service any' and lack of App-ID profile assignment.",
-  deviceInfo: { hostname: "PA-VM-01", firmware: "PAN-OS 10.1", uptime: "128 Days" },
-  findings: [
-    { id: "pa-1", title: "App-ID Bypass", category: "Security", risk: RiskLevel.HIGH, description: "Rules using service-any bypass App-ID checks.", recommendation: "Switch to application-default." }
+    { id: "1", title: "Demo Finding", category: "Test", risk: RiskLevel.MEDIUM, description: "This is mock data.", recommendation: "No action needed." }
   ]
 };
 
