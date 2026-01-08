@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { 
   ShieldCheck, 
@@ -25,6 +24,30 @@ const App: React.FC = () => {
     vendor: 'fortinet',
     webhookUrl: ''
   });
+
+  /**
+   * 🛠️ NORMALIZATION LAYER
+   * This converts raw JSON strings from n8n into the RiskLevel Enum values.
+   * This prevents the "Cannot read properties of undefined (reading 'filter')" error.
+   */
+  const normalizeReportData = (data: any): FirewallReport => {
+    return {
+      ...data,
+      findings: (data.findings || []).map((f: any) => {
+        let riskValue = RiskLevel.LOW;
+        const rawRisk = String(f.risk || '').toLowerCase();
+        
+        if (rawRisk === 'critical') riskValue = RiskLevel.CRITICAL;
+        else if (rawRisk === 'high') riskValue = RiskLevel.HIGH;
+        else if (rawRisk === 'medium') riskValue = RiskLevel.MEDIUM;
+
+        return {
+          ...f,
+          risk: riskValue
+        };
+      })
+    };
+  };
 
   const handleRunAudit = async (auditConfig: AuditConfig) => {
     setIsAuditing(true);
@@ -56,7 +79,20 @@ const App: React.FC = () => {
       }
 
       const data = await response.json();
-      setReport(data);
+      const reportData = Array.isArray(data) ? data[0] : data;
+
+      // Validation guard
+      if (
+        !reportData ||
+        !reportData.findings ||
+        !Array.isArray(reportData.findings)
+      ) {
+        throw new Error("Invalid audit response format from n8n. Findings array is missing.");
+      }
+
+      // Apply normalization before setting state to fix the crash
+      setReport(normalizeReportData(reportData));
+      
     } catch (err: any) {
       console.error("Audit fetch error:", err);
       
@@ -147,7 +183,7 @@ const App: React.FC = () => {
                       <span>Connected to Auditor Engine</span>
                     </p>
                     <p className="flex items-center justify-center space-x-2">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-ping"></div>
+                      <span className="w-2 h-2 bg-blue-500 rounded-full animate-ping"></span>
                       <span>Agent fetching rulebase via API</span>
                     </p>
                   </div>
@@ -236,6 +272,7 @@ const App: React.FC = () => {
   );
 };
 
+// Mock Data
 const MOCK_REPORT_FORTINET: FirewallReport = {
   overallScore: 72,
   summary: "The FortiGate configuration shows a generally healthy posture but has several high-risk 'Any-Any' rules and outdated firmware. Several management services are exposed to the public internet.",
@@ -251,7 +288,7 @@ const MOCK_REPORT_FORTINET: FirewallReport = {
       category: "Management",
       risk: RiskLevel.CRITICAL,
       description: "Management access via SSH is permitted from any source IP (0.0.0.0/0). This exposes the device to brute-force attacks.",
-      recommendation: "Restrict management access to a trusted internal subnet or a specific VPN pool using 'set access-banner enable'."
+      recommendation: "Restrict management access to a trusted internal subnet or a specific VPN pool."
     },
     {
       id: "2",
@@ -259,7 +296,7 @@ const MOCK_REPORT_FORTINET: FirewallReport = {
       category: "Traffic Control",
       risk: RiskLevel.HIGH,
       description: "Policy ID 45 allows all traffic from Guest VLAN to the production Database server on port 3306.",
-      recommendation: "Implement a specific rule allowing only necessary application ports and deny all other inter-VLAN traffic."
+      recommendation: "Implement a specific rule allowing only necessary application ports."
     },
     {
       id: "3",
@@ -275,14 +312,14 @@ const MOCK_REPORT_FORTINET: FirewallReport = {
       category: "Compliance",
       risk: RiskLevel.LOW,
       description: "Category-based web filtering is currently disabled due to license expiration.",
-      recommendation: "Renew FortiGuard subscriptions to re-enable malicious domain blocking."
+      recommendation: "Renew FortiGuard subscriptions."
     }
   ]
 };
 
 const MOCK_REPORT_PA: FirewallReport = {
   overallScore: 65,
-  summary: "Palo Alto Networks audit reveals several security policies with 'service any' and lack of App-ID profile assignment. GlobalProtect is configured with weak ciphers.",
+  summary: "Palo Alto Networks audit reveals several security policies with 'service any' and lack of App-ID profile assignment.",
   deviceInfo: {
     hostname: "PA-VM-PRIMARY",
     firmware: "PAN-OS 10.1.6-h6",
@@ -294,24 +331,16 @@ const MOCK_REPORT_PA: FirewallReport = {
       title: "Implicit App-ID Overrides",
       category: "App-ID",
       risk: RiskLevel.HIGH,
-      description: "Several rules use 'service any' instead of specific App-ID signatures, allowing non-standard traffic to bypass deep packet inspection.",
-      recommendation: "Switch from 'service any' to application-default and specify required App-IDs like 'web-browsing' and 'ssl'."
+      description: "Several rules use 'service any' instead of specific App-ID signatures.",
+      recommendation: "Switch from 'service any' to application-default."
     },
     {
       id: "pa-2",
       title: "Lack of Security Profiles",
       category: "Threat Prevention",
       risk: RiskLevel.CRITICAL,
-      description: "Outbound internet policies lack Antivirus, Vulnerability Protection, and WildFire profiles.",
-      recommendation: "Apply the 'Strict' security profile group to all rules allowing outbound traffic."
-    },
-    {
-      id: "pa-3",
-      title: "Weak GlobalProtect Ciphers",
-      category: "Remote Access",
-      risk: RiskLevel.MEDIUM,
-      description: "SSL/TLS profile allows TLS 1.0 and 1.1 for GlobalProtect VPN connections.",
-      recommendation: "Update the SSL/TLS Service Profile to restrict minimum version to TLS 1.2."
+      description: "Outbound internet policies lack Antivirus and Vulnerability Protection.",
+      recommendation: "Apply the 'Strict' security profile group."
     }
   ]
 };
