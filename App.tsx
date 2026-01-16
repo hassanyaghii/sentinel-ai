@@ -1,30 +1,30 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   ShieldCheck, 
   Terminal, 
   FileSearch,
   AlertTriangle,
-  Sparkles,
   Database,
-  LayoutDashboard
+  LayoutDashboard,
+  Activity
 } from 'lucide-react';
 import { AuditConfig, FirewallReport, RiskLevel } from './types';
 import SetupForm from './components/SetupForm';
 import AuditReport from './components/AuditReport';
 import ConfigExplorer from './components/ConfigExplorer';
+import MonitorTab from './components/MonitorTab';
 
-const UI_BUILD_ID = "v2.0.0-CONFIG-MASTER";
+const UI_BUILD_ID = "v2.5.0-FIREWALL-SENTINEL";
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'audit' | 'explorer'>('audit');
+  const [activeTab, setActiveTab] = useState<'audit' | 'explorer' | 'monitor'>('audit');
   const [isAuditing, setIsAuditing] = useState(false);
   const [report, setReport] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [config, setConfig] = useState<AuditConfig>({
     ipAddress: '',
     apiKey: '',
-    vendor: 'fortinet',
+    vendor: 'paloalto',
     webhookUrl: ''
   });
 
@@ -84,14 +84,21 @@ const App: React.FC = () => {
               <div className="hidden md:flex space-x-1">
                 <button 
                   onClick={() => setActiveTab('audit')}
-                  className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center space-x-2 ${activeTab === 'audit' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                  className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center space-x-2 ${activeTab === 'audit' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
                 >
                   <LayoutDashboard className="w-4 h-4" />
                   <span>Audit Dashboard</span>
                 </button>
                 <button 
+                  onClick={() => setActiveTab('monitor')}
+                  className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center space-x-2 ${activeTab === 'monitor' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                >
+                  <Activity className="w-4 h-4" />
+                  <span>Live Monitor</span>
+                </button>
+                <button 
                   onClick={() => setActiveTab('explorer')}
-                  className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center space-x-2 ${activeTab === 'explorer' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                  className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center space-x-2 ${activeTab === 'explorer' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
                 >
                   <Database className="w-4 h-4" />
                   <span>Config Manager</span>
@@ -106,7 +113,7 @@ const App: React.FC = () => {
       </nav>
 
       <main className="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {activeTab === 'audit' ? (
+        {activeTab === 'audit' && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-1">
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 sticky top-24">
@@ -141,19 +148,20 @@ const App: React.FC = () => {
                   <p className="text-red-700/80 mt-2 text-sm">{error}</p>
                 </div>
               ) : (
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 flex flex-col items-center justify-center min-h-[600px] text-center border-dashed">
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 flex flex-col items-center justify-center min-h-[600px] text-center border-dashed border-2">
                   <FileSearch className="w-16 h-16 text-slate-200 mb-6" />
                   <h3 className="text-3xl font-bold text-slate-900 tracking-tight">System Ready</h3>
-                  <p className="text-slate-500 mt-3 max-w-sm mx-auto">
-                    Configure your n8n webhook to analyze your firewall policy in real-time.
+                  <p className="text-slate-500 mt-3 max-w-sm mx-auto uppercase font-black text-[10px] tracking-widest">
+                    Configure your n8n agent to start analyzing firewall configurations
                   </p>
                 </div>
               )}
             </div>
           </div>
-        ) : (
-          <ConfigExplorer />
         )}
+
+        {activeTab === 'explorer' && <ConfigExplorer />}
+        {activeTab === 'monitor' && <MonitorTab config={config} />}
       </main>
     </div>
   );

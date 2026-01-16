@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Shield, 
   Globe, 
@@ -17,12 +17,7 @@ import {
   Zap,
   CheckCircle2,
   ArrowDownLeft,
-  ArrowUpRight,
-  Terminal,
-  Clock,
-  User,
-  Monitor,
-  ChevronRight
+  ArrowUpRight
 } from 'lucide-react';
 
 interface SavedConfig {
@@ -50,36 +45,26 @@ interface PaloInterface {
   status: string;
 }
 
-interface ConfigLog {
-  time: string;
-  admin: string;
-  host: string;
-  client: string;
-  cmd: string;
-  result: string;
-  path: string;
-  before: string;
-  after: string;
-  sequence: string;
-}
+// Utility for safe UUID generation in non-HTTPS environments
+const generateSafeId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'id-' + Date.now() + '-' + Math.floor(Math.random() * 1000000);
+};
 
 const ConfigExplorer: React.FC = () => {
   const [configs, setConfigs] = useState<SavedConfig[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [compareId, setCompareId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'view' | 'compare'>('view');
-  const [activeTab, setActiveTab] = useState<'security' | 'nat' | 'interfaces' | 'monitor' | 'raw'>('security');
+  const [activeTab, setActiveTab] = useState<'security' | 'nat' | 'interfaces' | 'raw'>('security');
   
   const [ipAddress, setIpAddress] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [webhookUrl, setWebhookUrl] = useState('');
-  const [jobId, setJobId] = useState('28');
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
-  
-  // Monitor State
-  const [logs, setLogs] = useState<ConfigLog[]>([]);
-  const [rawLogXml, setRawLogXml] = useState('');
 
   useEffect(() => {
     const saved = localStorage.getItem('sentinel_configs');
@@ -97,7 +82,7 @@ const ConfigExplorer: React.FC = () => {
 
   const processNewConfig = (hostname: string, ip: string, raw: string) => {
     const newEntry: SavedConfig = {
-      id: crypto.randomUUID(),
+      id: generateSafeId(),
       timestamp: new Date().toLocaleString(),
       hostname,
       ip,
@@ -109,64 +94,8 @@ const ConfigExplorer: React.FC = () => {
     setViewMode('view');
   };
 
-  const handleFetchLogs = async () => {
-    setIsExtracting(true);
-    setExtractError(null);
-    try {
-      if (!webhookUrl) throw new Error("n8n Webhook URL is required.");
-      const response = await fetch(webhookUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          ipAddress, 
-          apiKey, 
-          jobId,
-          action: 'get_logs' 
-        })
-      });
-
-      if (!response.ok) throw new Error(`Fetch failed: ${response.status}`);
-      const data = await response.json();
-      const xmlString = typeof data === 'string' ? data : data.raw || data.xml || JSON.stringify(data);
-      setRawLogXml(xmlString);
-      
-      const entryRegex = /<entry[^>]*>([\s\S]*?)<\/entry>/gi;
-      const parsedLogs: ConfigLog[] = [];
-      let match;
-      
-      while ((match = entryRegex.exec(xmlString)) !== null) {
-        const content = match[1];
-        const getTag = (tag: string) => {
-          const m = content.match(new RegExp(`<${tag}>([^<]*)<\\/${tag}>`, 'i'));
-          return m ? m[1] : '';
-        };
-        parsedLogs.push({
-          time: getTag('receive_time'),
-          admin: getTag('admin'),
-          host: getTag('host') || ipAddress,
-          client: getTag('client'),
-          cmd: getTag('cmd'),
-          result: getTag('result'),
-          path: getTag('path'),
-          before: getTag('before-change'),
-          after: getTag('after-change'),
-          sequence: getTag('seqno')
-        });
-      }
-      setLogs(parsedLogs);
-    } catch (err: any) {
-      setExtractError(err.message || "Log fetch failed.");
-    } finally {
-      setIsExtracting(false);
-    }
-  };
-
   const handleRunExtraction = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (activeTab === 'monitor') {
-      handleFetchLogs();
-      return;
-    }
     setIsExtracting(true);
     setExtractError(null);
 
@@ -328,10 +257,10 @@ const ConfigExplorer: React.FC = () => {
           <div>
             <h2 className="text-lg font-black text-slate-900 tracking-tight flex items-center space-x-2">
               <span>CONFIG EXPLORER</span>
-              <span className="text-[9px] bg-blue-50 text-blue-600 border border-blue-100 px-2 py-0.5 rounded uppercase font-black tracking-widest">v2.5-MONITOR</span>
+              <span className="text-[9px] bg-blue-50 text-blue-600 border border-blue-100 px-2 py-0.5 rounded uppercase font-black tracking-widest">v2.1-ARCHITECT</span>
             </h2>
-            <p className="text-xs text-slate-400 font-medium">
-              Enterprise Firewall Audit & Real-time Configuration Logging
+            <p className="text-xs text-slate-400 font-medium italic">
+              Enterprise Snapshot Management & Delta Analysis Engine
             </p>
           </div>
         </div>
@@ -357,7 +286,7 @@ const ConfigExplorer: React.FC = () => {
         <div className="w-80 flex flex-col space-y-4 shrink-0">
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
             <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-between">
-              <span>Firewall Connector</span>
+              <span>Snapshot Puller</span>
               <Activity className="w-3 h-3 text-blue-500" />
             </h3>
             <form onSubmit={handleRunExtraction} className="space-y-3">
@@ -373,21 +302,12 @@ const ConfigExplorer: React.FC = () => {
                 type="text" placeholder="n8n Webhook URL" value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)}
                 className="w-full px-4 py-2 text-xs border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/10 shadow-inner"
               />
-              {activeTab === 'monitor' && (
-                <div className="pt-2 border-t border-slate-100 space-y-2">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Log Job ID</label>
-                  <input 
-                    type="text" placeholder="e.g. 28" value={jobId} onChange={(e) => setJobId(e.target.value)}
-                    className="w-full px-4 py-2 text-xs border border-blue-200 bg-blue-50/30 rounded-xl outline-none"
-                  />
-                </div>
-              )}
               <button 
                 type="submit" disabled={isExtracting}
                 className="w-full py-2 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-black transition-all flex items-center justify-center space-x-2 shadow-sm"
               >
-                {isExtracting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : (activeTab === 'monitor' ? <Terminal className="w-3.5 h-3.5" /> : <Download className="w-3.5 h-3.5" />)}
-                <span>{activeTab === 'monitor' ? 'Stream Logs' : 'Fetch via n8n'}</span>
+                {isExtracting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                <span>Fetch from Agent</span>
               </button>
             </form>
             {extractError && <p className="text-[9px] text-red-500 font-bold bg-red-50 p-2 rounded-lg border border-red-100">{extractError}</p>}
@@ -395,7 +315,7 @@ const ConfigExplorer: React.FC = () => {
 
           <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
             <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Snapshot History</h3>
+              <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">History Buffer</h3>
               <div className="flex items-center space-x-2">
                 <label className="p-1 hover:bg-slate-200 rounded cursor-pointer transition-colors">
                   <Upload className="w-3.5 h-3.5 text-slate-400" />
@@ -423,248 +343,224 @@ const ConfigExplorer: React.FC = () => {
               )) : (
                 <div className="text-center p-8 opacity-20 flex flex-col items-center">
                   <Search className="w-10 h-10 mb-2" />
-                  <p className="text-[10px] font-black uppercase">No Data</p>
+                  <p className="text-[10px] font-black uppercase">No Snapshots</p>
                 </div>
               )}
             </div>
           </div>
         </div>
 
-        {/* Main Display */}
+        {/* Main Display Area */}
         <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-          {/* Contextual Tab Bar */}
-          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-            <div className="flex items-center space-x-1 p-1 bg-slate-200/50 rounded-2xl">
-              {(['security', 'nat', 'interfaces', 'monitor', 'raw'] as const).map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                    activeTab === tab ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  {tab}
-                </button>
-              ))}
+          {!selected ? (
+            <div className="flex-1 flex flex-col items-center justify-center text-slate-200">
+              <Shield className="w-20 h-20 opacity-10 mb-4" />
+              <p className="text-[10px] font-black uppercase tracking-[0.3em]">Select a Snapshot from Sidebar</p>
             </div>
-            <div className="flex items-center space-x-6 text-[9px] font-black uppercase tracking-widest">
-               <div className="flex items-center space-x-1.5"><div className="w-2 h-2 bg-emerald-500 rounded-full shadow-sm" /> <span className="text-emerald-700">Allow / Succeeded</span></div>
-               <div className="flex items-center space-x-1.5"><div className="w-2 h-2 bg-red-500 rounded-full shadow-sm" /> <span className="text-red-700">Deny / Failed</span></div>
-            </div>
-          </div>
-
-          {/* Work Area */}
-          <div className="flex-1 overflow-auto custom-scrollbar">
-            {activeTab === 'monitor' ? (
-              <div className="min-w-full inline-block align-middle">
-                <div className="overflow-hidden border-b border-slate-200">
-                  <table className="min-w-full divide-y divide-slate-200 border-collapse table-fixed">
-                    <thead className="bg-[#EBF5FB]">
-                      <tr className="divide-x divide-slate-300">
-                        <th className="w-32 px-3 py-2 text-left text-[10px] font-bold text-slate-700 uppercase tracking-tight">Receive Time</th>
-                        <th className="w-28 px-3 py-2 text-left text-[10px] font-bold text-slate-700 uppercase tracking-tight">Administrator</th>
-                        <th className="w-32 px-3 py-2 text-left text-[10px] font-bold text-slate-700 uppercase tracking-tight">Host</th>
-                        <th className="w-20 px-3 py-2 text-left text-[10px] font-bold text-slate-700 uppercase tracking-tight">Client</th>
-                        <th className="w-24 px-3 py-2 text-left text-[10px] font-bold text-slate-700 uppercase tracking-tight">Command</th>
-                        <th className="w-24 px-3 py-2 text-left text-[10px] font-bold text-slate-700 uppercase tracking-tight">Result</th>
-                        <th className="w-64 px-3 py-2 text-left text-[10px] font-bold text-slate-700 uppercase tracking-tight">Configuration Path</th>
-                        <th className="w-64 px-3 py-2 text-left text-[10px] font-bold text-slate-700 uppercase tracking-tight">Before Change</th>
-                        <th className="w-64 px-3 py-2 text-left text-[10px] font-bold text-slate-700 uppercase tracking-tight">After Change</th>
-                        <th className="w-32 px-3 py-2 text-left text-[10px] font-bold text-slate-700 uppercase tracking-tight">Sequence Number</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-slate-100 text-[11px] font-sans">
-                      {logs.length > 0 ? logs.map((log, idx) => (
-                        <tr key={idx} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-[#F9FDFF]'} divide-x divide-slate-100 hover:bg-blue-50/50 transition-colors`}>
-                          <td className="px-3 py-2 text-blue-600 font-medium underline cursor-pointer">{log.time}</td>
-                          <td className="px-3 py-2 text-blue-600 underline cursor-pointer">{log.admin}</td>
-                          <td className="px-3 py-2 text-blue-600 underline cursor-pointer">{log.host}</td>
-                          <td className="px-3 py-2 text-blue-600 underline cursor-pointer">{log.client}</td>
-                          <td className="px-3 py-2 text-blue-600 underline cursor-pointer">{log.cmd}</td>
-                          <td className={`px-3 py-2 font-medium ${log.result.toLowerCase() === 'succeeded' || log.result.toLowerCase() === 'submitted' ? 'text-blue-600 underline' : 'text-red-600'}`}>
-                            {log.result}
-                          </td>
-                          <td className="px-3 py-2 text-slate-600 leading-tight">
-                            <div className="max-h-16 overflow-y-auto custom-scrollbar whitespace-pre-wrap">{log.path}</div>
-                          </td>
-                          <td className="px-3 py-2 text-slate-600 leading-tight">
-                            <div className="max-h-16 overflow-y-auto custom-scrollbar whitespace-pre-wrap">{log.before}</div>
-                          </td>
-                          <td className="px-3 py-2 text-slate-600 leading-tight">
-                            <div className="max-h-16 overflow-y-auto custom-scrollbar whitespace-pre-wrap">{log.after}</div>
-                          </td>
-                          <td className="px-3 py-2 text-slate-400 font-mono truncate">{log.sequence}</td>
-                        </tr>
-                      )) : (
-                        <tr>
-                          <td colSpan={10} className="px-6 py-20 text-center text-slate-300 italic">
-                            <div className="flex flex-col items-center">
-                              <Monitor className="w-12 h-12 opacity-10 mb-4" />
-                              <p className="text-sm font-bold uppercase tracking-widest">No Logs Captured</p>
-                              <p className="text-[10px] mt-2">Enter Job ID {jobId} and Refresh Stream via Sidebar</p>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+          ) : (
+            <>
+              {/* Contextual Toolbar */}
+              <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                {viewMode === 'view' ? (
+                  <div className="flex items-center space-x-1 p-1 bg-slate-200/50 rounded-2xl">
+                    {(['security', 'nat', 'interfaces', 'raw'] as const).map(tab => (
+                      <button
+                        key={tab}
+                        onClick={() => setActiveTab(tab)}
+                        className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                          activeTab === tab ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        {tab}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex-1 flex items-center space-x-4">
+                    <div className="flex items-center space-x-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-white px-3 py-2 rounded-xl border border-slate-200">
+                      <span>Baseline: {selected.hostname}</span>
+                    </div>
+                    <ArrowRightLeft className="w-4 h-4 text-slate-300" />
+                    <select 
+                      className="bg-white border-2 border-blue-600 text-[10px] font-black uppercase tracking-widest text-blue-600 px-4 py-2 rounded-xl outline-none shadow-sm focus:ring-4 focus:ring-blue-50"
+                      value={compareId || ''}
+                      onChange={(e) => setCompareId(e.target.value)}
+                    >
+                      <option value="">Choose Target Snapshot...</option>
+                      {configs.filter(c => c.id !== selected.id).map(c => (
+                        <option key={c.id} value={c.id}>{c.hostname} ({c.timestamp})</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <div className="flex items-center space-x-6 text-[9px] font-black uppercase tracking-widest">
+                   <div className="flex items-center space-x-1.5"><div className="w-2 h-2 bg-emerald-500 rounded-full shadow-sm" /> <span className="text-emerald-700">Added</span></div>
+                   <div className="flex items-center space-x-1.5"><div className="w-2 h-2 bg-red-500 rounded-full shadow-sm" /> <span className="text-red-700">Removed</span></div>
                 </div>
               </div>
-            ) : viewMode === 'compare' ? (
-              <div className="p-0">
-                <table className="w-full text-left border-collapse">
-                  <thead className="sticky top-0 bg-white shadow-sm z-10 border-b border-slate-100">
-                    <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                      <th className="px-6 py-4 w-12 text-center">Δ</th>
-                      <th className="px-6 py-4">Policy Name</th>
-                      <th className="px-6 py-4">Zones</th>
-                      <th className="px-6 py-4">App</th>
-                      <th className="px-6 py-4">Matching</th>
-                      <th className="px-6 py-4 text-right">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {diffData?.map((diff, idx) => (
-                      <tr key={idx} className={`transition-all border-l-4 ${
-                        diff.type === 'added' ? 'bg-emerald-50 border-emerald-500' : 
-                        diff.type === 'removed' ? 'bg-red-50 border-red-500 shadow-sm opacity-90' : 
-                        diff.type === 'modified' ? 'bg-amber-50/40 border-amber-400' : 'border-transparent'
-                      }`}>
-                        <td className="px-6 py-4 text-center">
-                          {diff.type === 'added' && <PlusCircle className="w-4 h-4 text-emerald-600 mx-auto" />}
-                          {diff.type === 'removed' && <MinusCircle className="w-4 h-4 text-red-600 mx-auto" />}
-                          {diff.type === 'modified' && <Zap className="w-4 h-4 text-amber-500 animate-pulse mx-auto" />}
-                          {diff.type === 'unchanged' && <CheckCircle2 className="w-4 h-4 text-slate-200 mx-auto" />}
-                        </td>
-                        <td className="px-6 py-4 font-bold text-[11px]">
-                           <span className={diff.type === 'removed' ? 'line-through text-red-900/60 decoration-2' : diff.type === 'added' ? 'text-emerald-800 font-black' : 'text-slate-800'}>
-                              {diff.name}
-                           </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <DiffValue 
-                            type={diff.type as any}
-                            current={`${diff.current!.from}→${diff.current!.to}`} 
-                            previous={diff.previous ? `${diff.previous.from}→${diff.previous.to}` : undefined} 
-                            isChanged={!!diff.changes?.includes('zones')} 
-                          />
-                        </td>
-                        <td className="px-6 py-4">
-                          <DiffValue 
-                            type={diff.type as any}
-                            current={diff.current!.app} 
-                            previous={diff.previous?.app} 
-                            isChanged={!!diff.changes?.includes('application')} 
-                          />
-                        </td>
-                        <td className="px-6 py-4">
-                          <DiffValue 
-                            type={diff.type as any}
-                            current={`${diff.current!.source}/${diff.current!.destination}`} 
-                            previous={diff.previous ? `${diff.previous.source}/${diff.previous.destination}` : undefined} 
-                            isChanged={!!diff.changes?.includes('addresses')} 
-                          />
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <DiffValue 
-                            type={diff.type as any}
-                            current={diff.current!.action} 
-                            previous={diff.previous?.action} 
-                            isChanged={!!diff.changes?.includes('action')} 
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              /* Standard Views */
-              <div className="p-0">
-                {activeTab === 'security' && selectedData && (
+
+              {/* Work Area */}
+              <div className="flex-1 overflow-auto custom-scrollbar">
+                {viewMode === 'compare' && compareData ? (
                   <table className="w-full text-left border-collapse">
                     <thead className="sticky top-0 bg-white shadow-sm z-10 border-b border-slate-100">
                       <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                        <th className="px-6 py-4 w-12">#</th>
+                        <th className="px-6 py-4 w-12 text-center">Δ</th>
                         <th className="px-6 py-4">Policy Name</th>
-                        <th className="px-6 py-4">Flow</th>
                         <th className="px-6 py-4">Zones</th>
                         <th className="px-6 py-4">App</th>
+                        <th className="px-6 py-4">Matching</th>
                         <th className="px-6 py-4 text-right">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50">
-                      {selectedData.policies.map((p, i) => (
-                        <tr key={i} className={`hover:bg-slate-50 group ${p.disabled ? 'text-slate-300 italic' : ''}`}>
-                          <td className="px-6 py-3 font-mono text-[10px] opacity-30">{i + 1}</td>
-                          <td className="px-6 py-3 font-bold text-[11px] text-slate-800">{p.name}</td>
-                          <td className="px-6 py-3">
-                            <span className="text-[9px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                              {getDirection(p.from, p.to)}
-                            </span>
+                      {diffData?.map((diff, idx) => (
+                        <tr key={idx} className={`transition-all border-l-4 ${
+                          diff.type === 'added' ? 'bg-emerald-50 border-emerald-500' : 
+                          diff.type === 'removed' ? 'bg-red-50 border-red-500 shadow-sm opacity-90' : 
+                          diff.type === 'modified' ? 'bg-amber-50/40 border-amber-400' : 'border-transparent'
+                        }`}>
+                          <td className="px-6 py-4 text-center">
+                            {diff.type === 'added' && <PlusCircle className="w-4 h-4 text-emerald-600 mx-auto" />}
+                            {diff.type === 'removed' && <MinusCircle className="w-4 h-4 text-red-600 mx-auto" />}
+                            {diff.type === 'modified' && <Zap className="w-4 h-4 text-amber-500 animate-pulse mx-auto" />}
+                            {diff.type === 'unchanged' && <CheckCircle2 className="w-4 h-4 text-slate-200 mx-auto" />}
                           </td>
-                          <td className="px-6 py-3 font-mono text-[10px] text-slate-500">{p.from} → {p.to}</td>
-                          <td className="px-6 py-3 font-bold text-blue-600 uppercase text-[10px] tracking-tight">{p.app}</td>
-                          <td className="px-6 py-3 text-right">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
-                              p.action === 'allow' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                            }`}>
-                              {p.action}
-                            </span>
+                          <td className="px-6 py-4 font-bold text-[11px]">
+                             <span className={diff.type === 'removed' ? 'line-through text-red-900/60 decoration-2' : diff.type === 'added' ? 'text-emerald-800 font-black' : 'text-slate-800'}>
+                                {diff.name}
+                             </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            <DiffValue 
+                              type={diff.type as any}
+                              current={`${diff.current!.from}→${diff.current!.to}`} 
+                              previous={diff.previous ? `${diff.previous.from}→${diff.previous.to}` : undefined} 
+                              isChanged={!!diff.changes?.includes('zones')} 
+                            />
+                          </td>
+                          <td className="px-6 py-4">
+                            <DiffValue 
+                              type={diff.type as any}
+                              current={diff.current!.app} 
+                              previous={diff.previous?.app} 
+                              isChanged={!!diff.changes?.includes('application')} 
+                            />
+                          </td>
+                          <td className="px-6 py-4">
+                            <DiffValue 
+                              type={diff.type as any}
+                              current={`${diff.current!.source}/${diff.current!.destination}`} 
+                              previous={diff.previous ? `${diff.previous.source}/${diff.previous.destination}` : undefined} 
+                              isChanged={!!diff.changes?.includes('addresses')} 
+                            />
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <DiffValue 
+                              type={diff.type as any}
+                              current={diff.current!.action} 
+                              previous={diff.previous?.action} 
+                              isChanged={!!diff.changes?.includes('action')} 
+                            />
                           </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                )}
-                
-                {activeTab === 'nat' && selectedData && (
-                   <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {selectedData.nat.map((n, i) => (
-                      <div key={i} className="p-5 rounded-2xl border border-slate-100 bg-white shadow-sm hover:border-blue-200 transition-all">
-                        <div className="flex items-center justify-between mb-4 text-[8px] font-black text-slate-400 uppercase tracking-widest">
-                           <span className="border px-1.5 py-0.5 rounded">NAT Entry</span>
-                           <Globe className="w-3.5 h-3.5 text-blue-400" />
-                        </div>
-                        <h4 className="font-bold text-slate-800 text-xs mb-3 truncate">{n.name}</h4>
-                        <div className="flex items-center justify-between text-[10px] font-mono p-3 bg-slate-50 rounded-xl border border-slate-100">
-                          <span className="text-slate-500">{n.source}</span>
-                          <ArrowRightLeft className="w-3 h-3 text-slate-300" />
-                          <span className="text-blue-600 font-bold">{n.translated}</span>
-                        </div>
-                      </div>
-                    ))}
+                ) : viewMode === 'compare' ? (
+                  <div className="flex-1 flex flex-col items-center justify-center p-20 text-slate-300">
+                    <Search className="w-10 h-10 mb-2" />
+                    <p className="text-[10px] font-black uppercase tracking-widest opacity-40">Choose a target to compare</p>
                   </div>
-                )}
-
-                {activeTab === 'interfaces' && selectedData && (
-                  <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {selectedData.interfaces.map((int, i) => (
-                      <div key={i} className="p-5 rounded-2xl border border-slate-100 bg-white shadow-sm flex flex-col justify-between h-36">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                             <div className="p-1.5 bg-slate-900 rounded-lg text-white"><Network className="w-3.5 h-3.5" /></div>
-                             <span className="font-bold text-slate-800 text-xs">{int.name}</span>
+                ) : (
+                  /* Standard Views */
+                  <div className="p-0">
+                    {activeTab === 'security' && selectedData && (
+                      <table className="w-full text-left border-collapse">
+                        <thead className="sticky top-0 bg-white shadow-sm z-10 border-b border-slate-100">
+                          <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                            <th className="px-6 py-4 w-12">#</th>
+                            <th className="px-6 py-4">Policy Name</th>
+                            <th className="px-6 py-4">Flow</th>
+                            <th className="px-6 py-4">Zones</th>
+                            <th className="px-6 py-4">App</th>
+                            <th className="px-6 py-4 text-right">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                          {selectedData.policies.map((p, i) => (
+                            <tr key={i} className={`hover:bg-slate-50 group ${p.disabled ? 'text-slate-300 italic' : ''}`}>
+                              <td className="px-6 py-3 font-mono text-[10px] opacity-30">{i + 1}</td>
+                              <td className="px-6 py-3 font-bold text-[11px] text-slate-800">{p.name}</td>
+                              <td className="px-6 py-3">
+                                <span className="text-[9px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                                  {getDirection(p.from, p.to)}
+                                </span>
+                              </td>
+                              <td className="px-6 py-3 font-mono text-[10px] text-slate-500">{p.from} → {p.to}</td>
+                              <td className="px-6 py-3 font-bold text-blue-600 uppercase text-[10px] tracking-tight">{p.app}</td>
+                              <td className="px-6 py-3 text-right">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                                  p.action === 'allow' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                }`}>
+                                  {p.action}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                    
+                    {activeTab === 'nat' && selectedData && (
+                       <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {selectedData.nat.map((n, i) => (
+                          <div key={i} className="p-5 rounded-2xl border border-slate-100 bg-white shadow-sm hover:border-blue-200 transition-all">
+                            <div className="flex items-center justify-between mb-4 text-[8px] font-black text-slate-400 uppercase tracking-widest">
+                               <span className="border px-1.5 py-0.5 rounded">NAT Entry</span>
+                               <Globe className="w-3.5 h-3.5 text-blue-400" />
+                            </div>
+                            <h4 className="font-bold text-slate-800 text-xs mb-3 truncate">{n.name}</h4>
+                            <div className="flex items-center justify-between text-[10px] font-mono p-3 bg-slate-50 rounded-xl border border-slate-100">
+                              <span className="text-slate-500">{n.source}</span>
+                              <ArrowRightLeft className="w-3 h-3 text-slate-300" />
+                              <span className="text-blue-600 font-bold">{n.translated}</span>
+                            </div>
                           </div>
-                          <div className="flex items-center space-x-1"><div className="w-1.5 h-1.5 bg-green-500 rounded-full" /><span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">UP</span></div>
-                        </div>
-                        <div className="mt-4">
-                           <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest mb-1">IP Assignment</p>
-                           <p className="text-[11px] font-mono font-bold text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100">{int.ip}</p>
-                        </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                )}
+                    )}
 
-                {activeTab === 'raw' && selected && (
-                  <div className="bg-slate-900 p-8 text-blue-200 font-mono text-[11px] overflow-auto h-full leading-relaxed custom-scrollbar">
-                    <pre className="whitespace-pre-wrap">{selected.raw}</pre>
+                    {activeTab === 'interfaces' && selectedData && (
+                      <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {selectedData.interfaces.map((int, i) => (
+                          <div key={i} className="p-5 rounded-2xl border border-slate-100 bg-white shadow-sm flex flex-col justify-between h-36">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-2">
+                                 <div className="p-1.5 bg-slate-900 rounded-lg text-white"><Network className="w-3.5 h-3.5" /></div>
+                                 <span className="font-bold text-slate-800 text-xs">{int.name}</span>
+                              </div>
+                              <div className="flex items-center space-x-1"><div className="w-1.5 h-1.5 bg-green-500 rounded-full" /><span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">UP</span></div>
+                            </div>
+                            <div className="mt-4">
+                               <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest mb-1">IP Assignment</p>
+                               <p className="text-[11px] font-mono font-bold text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100">{int.ip}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {activeTab === 'raw' && selected && (
+                      <div className="bg-slate-900 p-8 text-blue-200 font-mono text-[11px] overflow-auto h-full leading-relaxed custom-scrollbar">
+                        <pre className="whitespace-pre-wrap">{selected.raw}</pre>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            )}
-          </div>
+            </>
+          )}
         </div>
       </div>
     </div>
