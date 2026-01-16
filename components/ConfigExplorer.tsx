@@ -108,7 +108,6 @@ const ConfigExplorer: React.FC = () => {
       const data = await response.json();
       const result = Array.isArray(data) ? data[0] : data;
       
-      // Handle the specific structure provided by the user
       const rawContent = result.firewallConfig || result.raw || (result.json ? JSON.stringify(result.json, null, 2) : JSON.stringify(result, null, 2));
       
       processNewConfig(result.hostname || ipAddress, ipAddress, rawContent);
@@ -121,13 +120,12 @@ const ConfigExplorer: React.FC = () => {
 
   const parsePaloAltoXML = (rawInput: string) => {
     let raw = rawInput;
-    // Check if input is a JSON string that needs unwrapping
     try {
       if (raw.trim().startsWith('{')) {
         const parsed = JSON.parse(raw);
         if (parsed.firewallConfig) raw = parsed.firewallConfig;
       }
-    } catch (e) { /* not json, continue */ }
+    } catch (e) {}
 
     const extractEntries = (sectionRegex: RegExp) => {
       const sectionMatch = raw.match(sectionRegex);
@@ -143,14 +141,16 @@ const ConfigExplorer: React.FC = () => {
     };
 
     const getMembers = (xml: string, tag: string) => {
+      // Find the specific parent tag (e.g., <from>, <to>, <source>)
       const tagRegex = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, "i");
       const tagMatch = xml.match(tagRegex);
       if (!tagMatch) return "any";
       
+      const content = tagMatch[1];
       const members: string[] = [];
       const memberRegex = /<member>([^<]*)<\/member>/gi;
       let memberMatch;
-      while ((memberMatch = memberRegex.exec(tagMatch[1])) !== null) {
+      while ((memberMatch = memberRegex.exec(content)) !== null) {
         members.push(memberMatch[1]);
       }
       return members.length > 0 ? members.join(', ') : "any";
@@ -182,9 +182,9 @@ const ConfigExplorer: React.FC = () => {
       translated: getSimpleTag(e.content, 'translated-address') || "Masquerade"
     }));
 
-    const interfaces: PaloInterface[] = extractEntries(/<interface>([\s\S]*?)<\/interface>/i).map(e => ({
+    const interfaces: PaloInterface[] = extractEntries(/<zone>([\s\S]*?)<\/zone>/i).map(e => ({
       name: e.name,
-      ip: getSimpleTag(e.content, 'ipv4') || "unassigned",
+      ip: getMembers(e.content, 'layer3'),
       status: 'up'
     }));
 
@@ -243,13 +243,13 @@ const ConfigExplorer: React.FC = () => {
         <div className="flex items-center space-x-3">
           <div className="p-2.5 bg-slate-900 rounded-xl text-white shadow-lg"><Shield className="w-5 h-5" /></div>
           <div>
-            <h2 className="text-lg font-black text-slate-900 tracking-tight">CONFIG EXPLORER</h2>
-            <p className="text-xs text-slate-400 font-medium">Snapshot Delta Analysis Engine</p>
+            <h2 className="text-lg font-black text-slate-900 tracking-tight tracking-widest">CONFIG EXPLORER</h2>
+            <p className="text-xs text-slate-400 font-medium">Visualizing {selected?.hostname || 'Snapshots'}</p>
           </div>
         </div>
         <button 
           onClick={() => { setViewMode(viewMode === 'view' ? 'compare' : 'view'); setCompareId(null); }}
-          className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center space-x-2 ${viewMode === 'compare' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}`}
+          className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center space-x-2 ${viewMode === 'compare' ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-100 text-slate-600'}`}
         >
           <Diff className="w-4 h-4" />
           <span>{viewMode === 'compare' ? 'Single View' : 'Compare Snapshot'}</span>
@@ -261,12 +261,12 @@ const ConfigExplorer: React.FC = () => {
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
             <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Snapshot Puller</h3>
             <form onSubmit={handleRunExtraction} className="space-y-3">
-              <input type="text" placeholder="Management IP" value={ipAddress} onChange={(e) => setIpAddress(e.target.value)} className="w-full px-4 py-2 text-xs border border-slate-200 rounded-xl outline-none" />
-              <input type="password" placeholder="API Key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} className="w-full px-4 py-2 text-xs border border-slate-200 rounded-xl outline-none" />
-              <input type="text" placeholder="n8n Webhook URL" value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} className="w-full px-4 py-2 text-xs border border-slate-200 rounded-xl outline-none" />
-              <button type="submit" disabled={isExtracting} className="w-full py-2 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-black flex items-center justify-center space-x-2">
+              <input type="text" placeholder="Management IP" value={ipAddress} onChange={(e) => setIpAddress(e.target.value)} className="w-full px-4 py-2.5 text-xs border border-slate-200 rounded-xl outline-none" />
+              <input type="password" placeholder="API Key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} className="w-full px-4 py-2.5 text-xs border border-slate-200 rounded-xl outline-none" />
+              <input type="text" placeholder="Webhook URL" value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} className="w-full px-4 py-2.5 text-xs border border-slate-200 rounded-xl outline-none" />
+              <button type="submit" disabled={isExtracting} className="w-full py-2.5 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-black transition-all flex items-center justify-center space-x-2">
                 {isExtracting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                <span>Fetch from Agent</span>
+                <span>Fetch Snapshot</span>
               </button>
             </form>
             {extractError && <p className="text-[9px] text-red-500 font-bold bg-red-50 p-2 rounded-lg">{extractError}</p>}
@@ -278,12 +278,14 @@ const ConfigExplorer: React.FC = () => {
               <Database className="w-3 h-3 text-slate-300" />
             </div>
             <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
-              {configs.map(c => (
-                <div key={c.id} onClick={() => setSelectedId(c.id)} className={`p-3 rounded-xl border transition-all cursor-pointer ${selectedId === c.id ? 'bg-blue-50 border-blue-200' : 'bg-slate-50 border-slate-100'}`}>
+              {configs.length > 0 ? configs.map(c => (
+                <div key={c.id} onClick={() => setSelectedId(c.id)} className={`p-3 rounded-xl border transition-all cursor-pointer ${selectedId === c.id ? 'bg-blue-50 border-blue-200 shadow-sm' : 'bg-slate-50 border-slate-100 hover:border-slate-300'}`}>
                   <p className="font-bold text-slate-800 text-[11px] truncate">{c.hostname}</p>
-                  <p className="text-[9px] text-slate-400 mt-1 uppercase">{c.timestamp}</p>
+                  <p className="text-[9px] text-slate-400 mt-1 uppercase tracking-tighter">{c.timestamp}</p>
                 </div>
-              ))}
+              )) : (
+                <div className="p-8 text-center opacity-20"><Search className="w-8 h-8 mx-auto mb-2" /><p className="text-[10px] uppercase font-black">Empty</p></div>
+              )}
             </div>
           </div>
         </div>
@@ -300,12 +302,12 @@ const ConfigExplorer: React.FC = () => {
                 {viewMode === 'view' ? (
                   <div className="flex items-center space-x-1 p-1 bg-slate-200/50 rounded-2xl">
                     {(['security', 'nat', 'interfaces', 'raw'] as const).map(tab => (
-                      <button key={tab} onClick={() => setActiveTab(tab)} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === tab ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}>{tab}</button>
+                      <button key={tab} onClick={() => setActiveTab(tab)} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === tab ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>{tab}</button>
                     ))}
                   </div>
                 ) : (
-                  <select className="bg-white border border-slate-200 text-[10px] font-black uppercase px-4 py-2 rounded-xl outline-none" value={compareId || ''} onChange={(e) => setCompareId(e.target.value)}>
-                    <option value="">Compare with...</option>
+                  <select className="bg-white border border-slate-200 text-[10px] font-black uppercase px-4 py-2 rounded-xl outline-none shadow-sm focus:ring-2 focus:ring-blue-100" value={compareId || ''} onChange={(e) => setCompareId(e.target.value)}>
+                    <option value="">Choose comparison target...</option>
                     {configs.filter(c => c.id !== selected.id).map(c => <option key={c.id} value={c.id}>{c.hostname} ({c.timestamp})</option>)}
                   </select>
                 )}
@@ -317,22 +319,22 @@ const ConfigExplorer: React.FC = () => {
                     <thead className="sticky top-0 bg-white shadow-sm border-b border-slate-100">
                       <tr className="text-[10px] font-black text-slate-400 uppercase">
                         <th className="px-6 py-4">Δ</th>
-                        <th className="px-6 py-4">Policy Name</th>
+                        <th className="px-6 py-4">Rule Name</th>
                         <th className="px-6 py-4">Zones</th>
-                        <th className="px-6 py-4">Source / Dest</th>
+                        <th className="px-6 py-4">Addressing</th>
                         <th className="px-6 py-4">App</th>
                         <th className="px-6 py-4 text-right">Action</th>
                       </tr>
                     </thead>
                     <tbody>
                       {diffData?.map((diff, i) => (
-                        <tr key={i} className={`border-b border-slate-50 ${diff.type === 'added' ? 'bg-emerald-50' : diff.type === 'removed' ? 'bg-red-50' : diff.type === 'modified' ? 'bg-amber-50' : ''}`}>
-                          <td className="px-6 py-4 text-center">{diff.type === 'added' ? '+' : diff.type === 'removed' ? '-' : 'Δ'}</td>
-                          <td className="px-6 py-4 font-bold">{diff.name}</td>
+                        <tr key={i} className={`border-b border-slate-50 transition-colors ${diff.type === 'added' ? 'bg-emerald-50' : diff.type === 'removed' ? 'bg-red-50' : diff.type === 'modified' ? 'bg-amber-50' : ''}`}>
+                          <td className="px-6 py-4 text-center font-bold">{diff.type === 'added' ? '+' : diff.type === 'removed' ? '-' : 'Δ'}</td>
+                          <td className="px-6 py-4 font-bold text-slate-800">{diff.name}</td>
                           <td className="px-6 py-4"><DiffValue type={diff.type} current={`${diff.current!.from} → ${diff.current!.to}`} previous={diff.previous ? `${diff.previous.from} → ${diff.previous.to}` : undefined} isChanged={diff.changes.includes('zones')} /></td>
                           <td className="px-6 py-4"><DiffValue type={diff.type} current={`${diff.current!.source} / ${diff.current!.destination}`} previous={diff.previous ? `${diff.previous.source} / ${diff.previous.destination}` : undefined} isChanged={diff.changes.includes('addresses')} /></td>
                           <td className="px-6 py-4"><DiffValue type={diff.type} current={diff.current!.app} previous={diff.previous?.app} isChanged={diff.changes.includes('application')} /></td>
-                          <td className="px-6 py-4 text-right">{diff.current!.action}</td>
+                          <td className="px-6 py-4 text-right font-bold uppercase">{diff.current!.action}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -344,23 +346,21 @@ const ConfigExplorer: React.FC = () => {
                         <thead className="sticky top-0 bg-white border-b border-slate-100">
                           <tr className="text-[10px] font-black text-slate-400 uppercase">
                             <th className="px-6 py-4">Name</th>
-                            <th className="px-6 py-4">From</th>
-                            <th className="px-6 py-4">To</th>
+                            <th className="px-6 py-4">Zones</th>
                             <th className="px-6 py-4">Source</th>
                             <th className="px-6 py-4">Destination</th>
-                            <th className="px-6 py-4">App</th>
+                            <th className="px-6 py-4">Application</th>
                             <th className="px-6 py-4 text-right">Action</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
                           {selectedData.policies.map((p, i) => (
-                            <tr key={i} className={`hover:bg-slate-50 ${p.disabled ? 'opacity-40 grayscale' : ''}`}>
+                            <tr key={i} className={`hover:bg-slate-50 transition-colors ${p.disabled ? 'opacity-40 italic' : ''}`}>
                               <td className="px-6 py-4 font-bold text-slate-800">{p.name}</td>
-                              <td className="px-6 py-4 font-mono text-[10px] text-slate-500">{p.from}</td>
-                              <td className="px-6 py-4 font-mono text-[10px] text-slate-500">{p.to}</td>
+                              <td className="px-6 py-4 font-mono text-[10px] text-slate-500">{p.from} → {p.to}</td>
                               <td className="px-6 py-4 text-slate-600">{p.source}</td>
                               <td className="px-6 py-4 text-slate-600">{p.destination}</td>
-                              <td className="px-6 py-4 font-bold text-blue-600">{p.app}</td>
+                              <td className="px-6 py-4 font-bold text-blue-600 uppercase text-[10px]">{p.app}</td>
                               <td className="px-6 py-4 text-right">
                                 <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${p.action === 'allow' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{p.action}</span>
                               </td>
@@ -369,8 +369,29 @@ const ConfigExplorer: React.FC = () => {
                         </tbody>
                       </table>
                     )}
+                    
+                    {activeTab === 'interfaces' && selectedData && (
+                      <div className="p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {selectedData.interfaces.map((int, i) => (
+                          <div key={i} className="p-6 rounded-2xl border border-slate-100 bg-white shadow-sm flex flex-col justify-between h-40 hover:border-blue-200 transition-all">
+                             <div className="flex items-center justify-between">
+                               <div className="flex items-center space-x-2">
+                                 <div className="p-2 bg-slate-900 rounded-lg text-white"><Network className="w-4 h-4" /></div>
+                                 <span className="font-bold text-slate-800">{int.name}</span>
+                               </div>
+                               <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                             </div>
+                             <div className="mt-4">
+                               <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1">Members</p>
+                               <p className="text-xs font-mono font-bold text-slate-600 bg-slate-50 p-2 rounded-lg border border-slate-100 truncate">{int.ip}</p>
+                             </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     {activeTab === 'raw' && selected && (
-                      <div className="bg-slate-900 p-8 text-blue-200 font-mono text-[10px] overflow-auto h-full leading-relaxed">
+                      <div className="bg-slate-900 p-8 text-blue-200 font-mono text-[10px] overflow-auto h-full leading-relaxed custom-scrollbar">
                         <pre className="whitespace-pre-wrap">{selected.raw}</pre>
                       </div>
                     )}
