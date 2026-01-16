@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { FirewallReport, RiskLevel, SecurityFinding } from '../types';
 import { 
   ShieldAlert, 
@@ -13,57 +13,63 @@ import {
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 
 interface AuditReportProps {
-  report: FirewallReport;
+  report: any; 
 }
 
-const FindingItem: React.FC<{ finding: SecurityFinding }> = ({ finding }) => {
+const FindingItem: React.FC<{ finding: any }> = ({ finding }) => {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Use string comparison for safety if Enum fails
-  const riskStr = String(finding?.risk || 'Low').toLowerCase();
-  let badgeColor = 'bg-slate-400 text-white';
+  // Use robust type coercion and defaults
+  const riskLabel = String(finding?.risk || 'Low');
+  const riskKey = riskLabel.toLowerCase();
   
-  if (riskStr === 'critical') badgeColor = 'bg-red-600 text-white';
-  else if (riskStr === 'high') badgeColor = 'bg-orange-500 text-white';
-  else if (riskStr === 'medium') badgeColor = 'bg-amber-400 text-slate-900';
-  else if (riskStr === 'low') badgeColor = 'bg-blue-400 text-white';
+  let badgeClasses = 'bg-slate-400 text-white';
+  if (riskKey === 'critical') badgeClasses = 'bg-red-600 text-white shadow-sm shadow-red-100';
+  else if (riskKey === 'high') badgeClasses = 'bg-orange-500 text-white shadow-sm shadow-orange-100';
+  else if (riskKey === 'medium') badgeClasses = 'bg-amber-400 text-slate-900 shadow-sm shadow-amber-100';
+  else if (riskKey === 'low') badgeClasses = 'bg-blue-400 text-white shadow-sm shadow-blue-100';
 
-  const isHighRisk = riskStr === 'critical' || riskStr === 'high';
+  const isUrgent = riskKey === 'critical' || riskKey === 'high';
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:border-slate-300 transition-all">
+    <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden hover:border-slate-300 transition-all hover:shadow-md">
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full p-5 flex items-center justify-between text-left transition-colors hover:bg-slate-50"
+        className="w-full p-6 flex items-center justify-between text-left group"
       >
-        <div className="flex items-center space-x-3">
-          <div className={`p-2 rounded-lg ${isHighRisk ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>
-            {isHighRisk ? <ShieldAlert className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
+        <div className="flex items-center space-x-4">
+          <div className={`p-3 rounded-xl transition-colors ${isUrgent ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-500'}`}>
+            {isUrgent ? <ShieldAlert className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
           </div>
           <div>
-            <h4 className="font-bold text-slate-800">{finding?.title || 'Unknown Finding'}</h4>
-            <div className="flex items-center space-x-2">
-               <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${badgeColor}`}>
-                {finding?.risk || 'Low'}
+            <h4 className="font-bold text-slate-800 leading-tight group-hover:text-blue-600 transition-colors">{finding?.title || 'System Finding'}</h4>
+            <div className="flex items-center space-x-2 mt-1.5">
+               <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider ${badgeClasses}`}>
+                {riskLabel}
               </span>
-              <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">{finding?.category || 'General'}</span>
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{finding?.category || 'General'}</span>
             </div>
           </div>
         </div>
-        {isOpen ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+        <div className="ml-4 p-2 bg-slate-50 rounded-lg group-hover:bg-blue-50 transition-colors">
+          {isOpen ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+        </div>
       </button>
       
       {isOpen && (
-        <div className="px-5 pb-5 pt-0 animate-in slide-in-from-top-1 duration-200">
-          <div className="h-px bg-slate-100 mb-4" />
-          <div className="text-sm text-slate-600">
-            <p className="mb-4">{finding?.description || 'No description provided.'}</p>
-            <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
-              <div className="flex items-center space-x-2 text-slate-800 font-bold mb-1">
+        <div className="px-6 pb-6 pt-0 animate-in slide-in-from-top-2 duration-300">
+          <div className="h-px bg-slate-50 mb-5" />
+          <div className="space-y-4">
+            <div>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Analysis</span>
+              <p className="text-sm text-slate-600 leading-relaxed">{finding?.description || 'No detailed analysis provided.'}</p>
+            </div>
+            <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+              <div className="flex items-center space-x-2 text-slate-800 font-bold mb-2">
                 <CheckCircle2 className="w-4 h-4 text-green-600" />
-                <span>Recommendation</span>
+                <span className="text-xs uppercase tracking-wider">Hardening Step</span>
               </div>
-              <p className="text-slate-500 italic">{finding?.recommendation || 'No recommendation.'}</p>
+              <p className="text-sm text-slate-500 leading-relaxed italic">{finding?.recommendation || 'No specific recommendation identified.'}</p>
             </div>
           </div>
         </div>
@@ -75,114 +81,145 @@ const FindingItem: React.FC<{ finding: SecurityFinding }> = ({ finding }) => {
 const AuditReport: React.FC<AuditReportProps> = ({ report }) => {
   const [showFullSummary, setShowFullSummary] = useState(false);
 
-  // --- SAFETY LAYER: Ensure findings is NEVER undefined before calling .filter() or .map() ---
-  const safeFindings = Array.isArray(report?.findings) ? report.findings : [];
-  
-  const score = typeof report?.overallScore === 'number' ? report.overallScore : 0;
-  const deviceInfo = report?.deviceInfo || { hostname: 'Unknown', firmware: 'Unknown', uptime: 'Unknown' };
+  // --- THE ULTIMATE DEFENSIVE WRAPPER ---
+  const safeReport = useMemo(() => {
+    // 1. Unwrap array if provided
+    const base = Array.isArray(report) ? (report[0] || {}) : (report || {});
+    
+    // 2. Ensure everything exists with defaults
+    return {
+      score: Number(base?.overallScore ?? 0),
+      summary: String(base?.summary ?? "Audit analysis is complete."),
+      findings: Array.isArray(base?.findings) ? base.findings : [],
+      device: base?.deviceInfo || { hostname: 'N/A', firmware: 'N/A', uptime: 'N/A' }
+    };
+  }, [report]);
 
-  // Generate chart data safely using the safeFindings array
-  const getCount = (risk: string) => safeFindings.filter(f => String(f?.risk || '').toLowerCase() === risk.toLowerCase()).length;
-  
-  const riskData = [
-    { name: 'Critical', value: getCount('critical'), color: '#dc2626' },
-    { name: 'High', value: getCount('high'), color: '#f97316' },
-    { name: 'Medium', value: getCount('medium'), color: '#fbbf24' },
-    { name: 'Low', value: getCount('low'), color: '#60a5fa' },
-  ].filter(d => d.value > 0);
+  // Calculate chart data using the safe findings array
+  const riskLevels = ['Critical', 'High', 'Medium', 'Low'];
+  const riskData = useMemo(() => {
+    return riskLevels.map(level => {
+      const count = safeReport.findings.filter((f: any) => 
+        String(f?.risk || '').toLowerCase() === level.toLowerCase()
+      ).length;
+      
+      let color = '#94a3b8'; // default
+      if (level === 'Critical') color = '#dc2626';
+      else if (level === 'High') color = '#f97316';
+      else if (level === 'Medium') color = '#fbbf24';
+      else if (level === 'Low') color = '#60a5fa';
+      
+      return { name: level, value: count, color };
+    }).filter(d => d.value > 0);
+  }, [safeReport.findings]);
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 md:col-span-1 flex flex-col items-center justify-center text-center">
-          <div className="relative w-20 h-20 mb-2">
-            <svg className="w-full h-full" viewBox="0 0 36 36">
-              <path className="stroke-slate-100 fill-none stroke-[3]" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-              <path 
-                className={`fill-none stroke-[3] transition-all duration-1000 ${score > 70 ? 'stroke-green-500' : score > 40 ? 'stroke-amber-500' : 'stroke-red-500'}`}
-                strokeDasharray={`${score}, 100`}
-                d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" 
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 md:col-span-1 flex flex-col items-center justify-center text-center">
+          <div className="relative w-24 h-24 mb-3">
+            <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+              <circle cx="18" cy="18" r="16" fill="none" className="stroke-slate-50 stroke-[2.5]" />
+              <circle 
+                cx="18" cy="18" r="16" fill="none" 
+                className={`stroke-[2.5] transition-all duration-1000 ${safeReport.score > 70 ? 'stroke-green-500' : safeReport.score > 40 ? 'stroke-amber-500' : 'stroke-red-500'}`}
+                strokeDasharray={`${safeReport.score}, 100`}
+                strokeLinecap="round"
               />
             </svg>
-            <div className="absolute inset-0 flex items-center justify-center font-bold text-slate-800">{score}%</div>
+            <div className="absolute inset-0 flex items-center justify-center font-black text-slate-900 text-2xl tracking-tighter">
+              {safeReport.score}<span className="text-xs text-slate-300 ml-0.5">%</span>
+            </div>
           </div>
-          <span className="text-[10px] font-bold text-slate-500 uppercase">Health Score</span>
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Security Health</span>
         </div>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 md:col-span-3">
-          <div className="flex items-center space-x-2 mb-2 font-bold text-slate-800">
+        <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 md:col-span-3">
+          <div className="flex items-center space-x-2 mb-3 font-black text-slate-800 text-xs uppercase tracking-widest">
             <Zap className="w-4 h-4 text-amber-500" />
-            <h3>AI Executive Summary</h3>
+            <h3>AI Executive Analysis</h3>
           </div>
-          <p className={`text-sm text-slate-600 leading-relaxed ${!showFullSummary ? 'line-clamp-2' : ''}`}>
-            {report?.summary || "Audit complete."}
+          <p className={`text-sm text-slate-600 leading-relaxed ${!showFullSummary ? 'line-clamp-3' : ''}`}>
+            {safeReport.summary}
           </p>
-          <button onClick={() => setShowFullSummary(!showFullSummary)} className="text-xs font-bold text-blue-600 mt-2">
-            {showFullSummary ? 'Show Less' : 'Show More'}
+          <button onClick={() => setShowFullSummary(!showFullSummary)} className="text-[11px] font-bold text-blue-600 mt-4 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors inline-block">
+            {showFullSummary ? 'Collapse Detailed View' : 'Read Full Security Impact'}
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-3">
-          <div className="flex justify-between items-center px-1">
-            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Findings ({safeFindings.length})</h3>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 space-y-4">
+          <div className="flex justify-between items-center px-1 mb-2">
+            <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest">Detected Exposures ({safeReport.findings.length})</h3>
           </div>
-          {safeFindings.length > 0 ? (
-            safeFindings.map((f, idx) => <FindingItem key={idx} finding={f} />)
+          
+          {safeReport.findings.length > 0 ? (
+            safeReport.findings.map((f: any, idx: number) => <FindingItem key={idx} finding={f} />)
           ) : (
-            <div className="bg-white p-12 rounded-xl border border-dashed border-slate-200 text-center text-slate-400 text-sm">
-              No findings identified.
+            <div className="bg-white p-20 rounded-2xl border-2 border-dashed border-slate-100 text-center">
+               <div className="w-16 h-16 bg-green-50 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle2 className="w-8 h-8" />
+               </div>
+               <h4 className="font-bold text-slate-900 mb-1">Clean Scan Results</h4>
+               <p className="text-slate-400 text-sm">No critical vulnerabilities identified in current ruleset.</p>
             </div>
           )}
         </div>
 
-        <div className="space-y-6">
-          <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
-            <h3 className="font-bold text-slate-800 mb-4 text-xs uppercase">Risk Breakdown</h3>
-            <div className="h-40">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={riskData} cx="50%" cy="50%" innerRadius={45} outerRadius={60} paddingAngle={5} dataKey="value">
-                    {riskData.map((entry, index) => <Cell key={index} fill={entry.color} stroke="none" />)}
-                  </Pie>
-                  <RechartsTooltip />
-                </PieChart>
-              </ResponsiveContainer>
+        <div className="space-y-8">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <h3 className="font-black text-slate-400 mb-6 text-[10px] uppercase tracking-widest">Risk Distribution</h3>
+            <div className="h-48 mb-4">
+              {riskData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={riskData} cx="50%" cy="50%" innerRadius={55} outerRadius={70} paddingAngle={8} dataKey="value">
+                      {riskData.map((entry, index) => <Cell key={index} fill={entry.color} stroke="none" />)}
+                    </Pie>
+                    <RechartsTooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-slate-300 italic">
+                   <ShieldAlert className="w-8 h-8 opacity-10 mb-2" />
+                   <span className="text-[10px]">No distribution data</span>
+                </div>
+              )}
             </div>
-            <div className="grid grid-cols-2 gap-2 mt-4">
+            <div className="space-y-2">
               {riskData.map((item) => (
-                <div key={item.name} className="flex items-center justify-between text-[10px] p-2 bg-slate-50 rounded border border-slate-100">
-                  <div className="flex items-center space-x-1.5">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }}></div>
-                    <span className="text-slate-500">{item.name}</span>
+                <div key={item.name} className="flex items-center justify-between text-[11px] p-3 bg-slate-50/50 rounded-xl border border-slate-100/50">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }}></div>
+                    <span className="text-slate-600 font-bold">{item.name}</span>
                   </div>
-                  <span className="font-bold text-slate-800">{item.value}</span>
+                  <span className="font-black text-slate-900">{item.value}</span>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="bg-white p-5 rounded-xl border border-slate-200 space-y-4">
-             <h3 className="font-bold text-slate-800 text-xs uppercase">Device Details</h3>
-             <div className="space-y-3 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Hostname</span>
-                  <span className="font-mono">{deviceInfo.hostname}</span>
+          <div className="bg-slate-900 p-6 rounded-2xl text-white space-y-5 border border-slate-800 shadow-xl">
+             <h3 className="font-black text-blue-400 text-[10px] uppercase tracking-widest">Target Environment</h3>
+             <div className="space-y-4 text-xs">
+                <div className="flex justify-between border-b border-white/5 pb-2">
+                  <span className="text-slate-400 font-medium">Device Name</span>
+                  <span className="font-mono text-blue-100 font-bold">{safeReport.device.hostname}</span>
+                </div>
+                <div className="flex justify-between border-b border-white/5 pb-2">
+                  <span className="text-slate-400 font-medium">OS Version</span>
+                  <span className="text-blue-100 font-bold">{safeReport.device.firmware}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Firmware</span>
-                  <span>{deviceInfo.firmware}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Uptime</span>
-                  <span>{deviceInfo.uptime}</span>
+                  <span className="text-slate-400 font-medium">System Uptime</span>
+                  <span className="text-blue-100 font-bold">{safeReport.device.uptime}</span>
                 </div>
              </div>
           </div>
 
-          <button className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold flex items-center justify-center space-x-2 text-sm">
-            <span>Download Audit PDF</span>
+          <button className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black shadow-xl shadow-blue-200 hover:bg-blue-700 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center space-x-3 text-sm">
+            <span>Export PDF Audit</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>
