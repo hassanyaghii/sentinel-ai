@@ -1,73 +1,72 @@
 
-import React, { useState } from 'react';
-import { ShieldCheck, Database, LayoutDashboard, Activity, AlertTriangle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ShieldCheck, Database, Activity, History, Clock, ChevronRight, AlertCircle } from 'lucide-react';
 import SetupForm from './components/SetupForm';
 import AuditReport from './components/AuditReport';
 import ConfigExplorer from './components/ConfigExplorer';
 import MonitorTab from './components/MonitorTab';
 import { AuditConfig } from './types';
 
-// Reverted to direct n8n production webhook
-const AUDIT_WEBHOOK = "https://10.1.240.2/webhook/analyze-firewall";
+const API_BASE = "/api";
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'audit' | 'explorer' | 'monitor'>('audit');
+  const [activeTab, setActiveTab] = useState<'audit' | 'archive' | 'explorer' | 'monitor'>('audit');
   const [isAuditing, setIsAuditing] = useState(false);
   const [report, setReport] = useState<any>(null);
+  const [dbReports, setDbReports] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [filterPath, setFilterPath] = useState<string | null>(null);
+  const [selectedArchiveId, setSelectedArchiveId] = useState<number | null>(null);
   
   const [config, setConfig] = useState<AuditConfig>({
     ipAddress: '',
     apiKey: '',
     vendor: 'paloalto',
-    webhookUrl: AUDIT_WEBHOOK
+    webhookUrl: ''
   });
 
-  const navigateToMonitor = (path: string) => {
-    setFilterPath(path);
-    setActiveTab('monitor');
+  const fetchArchive = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/reports`);
+      if (response.ok) {
+        const data = await response.json();
+        setDbReports(data);
+      }
+    } catch (err) {
+      console.error("Archive fetch error:", err);
+    }
   };
+
+  const loadArchiveDetail = async (id: number) => {
+    try {
+      const response = await fetch(`${API_BASE}/reports/${id}`);
+      if (response.ok) {
+        const data = await response.json();
+        setReport(data);
+        setActiveTab('audit');
+      }
+    } catch (err) {
+      console.error("Detail fetch error:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'archive') fetchArchive();
+  }, [activeTab]);
 
   const handleRunAudit = async (auditConfig: AuditConfig) => {
     setIsAuditing(true);
     setError(null);
-    setReport(null);
-    
     try {
-      const response = await fetch(AUDIT_WEBHOOK, {
+      const response = await fetch(`${API_BASE}/audit`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-          ipAddress: auditConfig.ipAddress,
-          apiKey: auditConfig.apiKey,
-          vendor: auditConfig.vendor
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(auditConfig)
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Agent Error (${response.status}): ${errorText || 'Check n8n connectivity'}`);
-      }
-
-      const rawData = await response.json();
-      
-      // Unwrap n8n standard output structures
-      let processedReport = rawData;
-      if (Array.isArray(rawData)) processedReport = rawData[0];
-      processedReport = processedReport?.body ?? processedReport?.data ?? processedReport?.output ?? processedReport;
-
-      if (!processedReport || typeof processedReport !== 'object') {
-        throw new Error("Invalid response from AI Agent. Expected JSON object.");
-      }
-
-      setReport(processedReport);
+      if (!response.ok) throw new Error("Agent connection failed");
+      const data = await response.json();
+      setReport(data);
     } catch (err: any) {
-      console.error("Audit Connection Error:", err);
-      setError(err.message || "Could not communicate with 10.1.240.2");
+      setError(err.message);
     } finally {
       setIsAuditing(false);
     }
@@ -77,21 +76,20 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
       <nav className="bg-slate-900 text-white border-b border-slate-700 h-16 sticky top-0 z-50 shadow-xl">
         <div className="max-w-7xl mx-auto px-4 h-full flex items-center justify-between">
-          <div className="flex items-center space-x-10">
+          <div className="flex items-center space-x-8">
             <div className="flex items-center space-x-3">
               <ShieldCheck className="w-8 h-8 text-blue-500" />
-              <span className="text-xl font-bold tracking-tight">Sentinel <span className="text-blue-500 uppercase text-sm ml-1">Enterprise</span></span>
+              <span className="text-xl font-bold tracking-tight">Sentinel <span className="text-blue-500 uppercase text-xs ml-1">PAN-OS</span></span>
             </div>
             <div className="flex space-x-1">
-              <button onClick={() => setActiveTab('audit')} className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'audit' ? 'bg-blue-600 shadow-lg' : 'text-slate-400 hover:text-white'}`}>AI Audit</button>
-              <button onClick={() => setActiveTab('monitor')} className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'monitor' ? 'bg-blue-600 shadow-lg' : 'text-slate-400 hover:text-white'}`}>Live Telemetry</button>
-              <button onClick={() => setActiveTab('explorer')} className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'explorer' ? 'bg-blue-600 shadow-lg' : 'text-slate-400 hover:text-white'}`}>Config Explorer</button>
+              <button onClick={() => { setActiveTab('audit'); setReport(null); }} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'audit' ? 'bg-blue-600' : 'text-slate-400 hover:text-white'}`}>AI Audit</button>
+              <button onClick={() => setActiveTab('archive')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'archive' ? 'bg-blue-600' : 'text-slate-400 hover:text-white'}`}>Archive</button>
+              <button onClick={() => setActiveTab('monitor')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'monitor' ? 'bg-blue-600' : 'text-slate-400 hover:text-white'}`}>Telemetry</button>
+              <button onClick={() => setActiveTab('explorer')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'explorer' ? 'bg-blue-600' : 'text-slate-400 hover:text-white'}`}>Explorer</button>
             </div>
           </div>
-          <div className="hidden md:block">
-            <div className="text-[10px] bg-slate-800 px-3 py-1.5 rounded-full text-slate-400 font-mono border border-slate-700">
-              AGENT HOST: 10.1.240.2
-            </div>
+          <div className="hidden md:block text-[10px] bg-slate-800 px-3 py-1.5 rounded-full text-slate-400 font-mono border border-slate-700">
+             10.1.244.70 LIVE
           </div>
         </div>
       </nav>
@@ -104,35 +102,64 @@ const App: React.FC = () => {
             </div>
             <div className="lg:col-span-2">
               {isAuditing ? (
-                <div className="bg-white rounded-2xl p-12 flex flex-col items-center justify-center min-h-[500px] shadow-sm border border-slate-200">
-                  <div className="relative">
-                    <div className="w-16 h-16 border-4 border-blue-50 border-t-blue-600 rounded-full animate-spin"></div>
-                    <ShieldCheck className="w-6 h-6 text-blue-600 absolute inset-0 m-auto" />
-                  </div>
-                  <h3 className="mt-8 text-lg font-bold text-slate-900 uppercase tracking-widest text-center">AI Agent Analysis...</h3>
-                  <p className="text-slate-400 text-sm mt-2 font-medium text-center">Contacting n8n at 10.1.240.2</p>
+                <div className="bg-white rounded-2xl p-12 flex flex-col items-center justify-center min-h-[500px] border border-slate-200">
+                  <div className="w-16 h-16 border-4 border-blue-50 border-t-blue-600 rounded-full animate-spin"></div>
+                  <h3 className="mt-8 text-lg font-bold text-slate-900 uppercase tracking-widest">Processing Configuration...</h3>
+                  <p className="text-slate-400 text-sm mt-2">Uploading XML to n8n AI Agent</p>
                 </div>
               ) : report ? (
                 <AuditReport report={report} />
-              ) : error ? (
-                <div className="bg-red-50 border border-red-100 rounded-2xl p-12 text-center">
-                  <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-                  <h3 className="text-lg font-bold text-red-900">Agent Communication Error</h3>
-                  <p className="text-red-600 mt-2 text-sm">{error}</p>
-                  <button onClick={() => handleRunAudit(config)} className="mt-6 px-6 py-2 bg-red-600 text-white rounded-lg font-bold text-xs uppercase">Retry Agent</button>
-                </div>
               ) : (
-                <div className="bg-white rounded-2xl p-12 flex flex-col items-center justify-center min-h-[500px] border-dashed border-2 border-slate-200">
-                  <ShieldCheck className="w-20 h-20 text-slate-100 mb-6" />
-                  <h3 className="text-2xl font-bold text-slate-800 tracking-tight">System Ready</h3>
-                  <p className="text-slate-400 mt-2 text-sm max-w-xs text-center">Configure the target firewall to begin the direct n8n security audit.</p>
+                <div className="bg-white rounded-2xl p-12 flex flex-col items-center justify-center min-h-[500px] border-dashed border-2 border-slate-200 text-center">
+                  <Activity className="w-16 h-16 text-slate-200 mb-4" />
+                  <h3 className="text-xl font-bold text-slate-800 uppercase tracking-tight">System Ready</h3>
+                  <p className="text-slate-400 text-sm mt-1">Audit results are automatically persisted to MySQL.</p>
                 </div>
               )}
             </div>
           </div>
         )}
-        {activeTab === 'explorer' && <ConfigExplorer onRuleSelect={navigateToMonitor} />}
-        {activeTab === 'monitor' && <MonitorTab config={config} initialFilter={filterPath} onClearFilter={() => setFilterPath(null)} />}
+
+        {activeTab === 'archive' && (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden min-h-[600px]">
+            <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+              <div>
+                <h2 className="text-lg font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">History</h2>
+                <p className="text-xs text-slate-400 font-medium">Archived security scans for vsys1</p>
+              </div>
+            </div>
+            <div className="p-6">
+              {dbReports.length > 0 ? (
+                <div className="space-y-3">
+                  {dbReports.map((r) => (
+                    <div key={r.id} onClick={() => loadArchiveDetail(r.id)} className="p-4 border border-slate-100 rounded-xl hover:border-blue-400 hover:bg-blue-50/20 transition-all flex items-center justify-between cursor-pointer group">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold text-white ${r.overall_score > 60 ? 'bg-green-500' : r.overall_score > 40 ? 'bg-orange-500' : 'bg-red-500'}`}>
+                          {r.overall_score}
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-slate-800 text-sm">{r.hostname} ({r.ip_address})</h4>
+                          <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                            <Clock className="w-3 h-3"/> {new Date(r.created_at).toLocaleString()}
+                          </div>
+                        </div>
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-blue-500 transition-colors" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-40 text-center opacity-30">
+                  <Database className="w-12 h-12 mx-auto mb-4" />
+                  <p className="font-black uppercase tracking-widest text-xs">Archive Empty</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'explorer' && <ConfigExplorer />}
+        {activeTab === 'monitor' && <MonitorTab config={config} />}
       </main>
     </div>
   );
