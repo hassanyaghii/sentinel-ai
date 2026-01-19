@@ -14,13 +14,14 @@ import AuditReport from './components/AuditReport';
 import ConfigExplorer from './components/ConfigExplorer';
 import MonitorTab from './components/MonitorTab';
 
-const UI_BUILD_ID = "v2.5.0-FIREWALL-SENTINEL";
+const UI_BUILD_ID = "v2.6.0-MYSQL-SYNC";
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'audit' | 'explorer' | 'monitor'>('audit');
   const [isAuditing, setIsAuditing] = useState(false);
   const [report, setReport] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const [filterPath, setFilterPath] = useState<string | null>(null);
   const [config, setConfig] = useState<AuditConfig>({
     ipAddress: '',
     apiKey: '',
@@ -28,23 +29,16 @@ const App: React.FC = () => {
     webhookUrl: ''
   });
 
-  useEffect(() => {
-    console.log(`%c SENTINEL AI UI LOADED: ${UI_BUILD_ID} `, "background: #2563eb; color: white; font-weight: bold; padding: 5px; border-radius: 4px;");
-  }, []);
+  const navigateToMonitor = (path: string) => {
+    setFilterPath(path);
+    setActiveTab('monitor');
+  };
 
   const handleRunAudit = async (auditConfig: AuditConfig) => {
     setIsAuditing(true);
     setError(null);
     setReport(null);
     setConfig(auditConfig);
-
-    if (auditConfig.webhookUrl.includes('example.com') || auditConfig.webhookUrl.includes('test-audit')) {
-      setTimeout(() => {
-        setReport(MOCK_REPORT_FORTINET);
-        setIsAuditing(false);
-      }, 800);
-      return;
-    }
 
     try {
       const response = await fetch(auditConfig.webhookUrl, {
@@ -57,13 +51,7 @@ const App: React.FC = () => {
       let data = Array.isArray(rawResponse) ? rawResponse[0] : rawResponse;
       if (data?.json) data = data.json;
       
-      const finalReport = {
-        overallScore: Number(data?.overallScore ?? 0),
-        summary: String(data?.summary ?? "Analysis completed."),
-        findings: Array.isArray(data?.findings) ? data.findings : [],
-        deviceInfo: data?.deviceInfo || { hostname: 'N/A', firmware: 'N/A', uptime: 'N/A' }
-      };
-      setReport(finalReport);
+      setReport(data);
     } catch (err: any) {
       setError(err.message || "Failed to communicate with n8n Agent.");
     } finally {
@@ -83,7 +71,7 @@ const App: React.FC = () => {
               </div>
               <div className="hidden md:flex space-x-1">
                 <button 
-                  onClick={() => setActiveTab('audit')}
+                  onClick={() => { setActiveTab('audit'); setFilterPath(null); }}
                   className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center space-x-2 ${activeTab === 'audit' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
                 >
                   <LayoutDashboard className="w-4 h-4" />
@@ -97,7 +85,7 @@ const App: React.FC = () => {
                   <span>Live Monitor</span>
                 </button>
                 <button 
-                  onClick={() => setActiveTab('explorer')}
+                  onClick={() => { setActiveTab('explorer'); setFilterPath(null); }}
                   className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center space-x-2 ${activeTab === 'explorer' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
                 >
                   <Database className="w-4 h-4" />
@@ -133,26 +121,23 @@ const App: React.FC = () => {
             <div className="lg:col-span-2">
               {isAuditing ? (
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 flex flex-col items-center justify-center min-h-[600px]">
-                  <div className="relative">
-                    <div className="w-16 h-16 border-4 border-blue-50 border-t-blue-600 rounded-full animate-spin"></div>
-                    <ShieldCheck className="absolute inset-0 m-auto w-6 h-6 text-blue-600 animate-pulse" />
-                  </div>
-                  <h3 className="mt-8 text-xl font-bold text-slate-900">Analyzing...</h3>
+                  <div className="w-16 h-16 border-4 border-blue-50 border-t-blue-600 rounded-full animate-spin"></div>
+                  <h3 className="mt-8 text-xl font-bold text-slate-900">Syncing with DB...</h3>
                 </div>
               ) : report ? (
                 <AuditReport report={report} />
               ) : error ? (
                 <div className="bg-red-50 border border-red-200 rounded-2xl p-10 text-center">
                   <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-                  <h3 className="text-2xl font-bold text-red-900">Communication Failed</h3>
+                  <h3 className="text-2xl font-bold text-red-900">Sync Failed</h3>
                   <p className="text-red-700/80 mt-2 text-sm">{error}</p>
                 </div>
               ) : (
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 flex flex-col items-center justify-center min-h-[600px] text-center border-dashed border-2">
                   <FileSearch className="w-16 h-16 text-slate-200 mb-6" />
-                  <h3 className="text-3xl font-bold text-slate-900 tracking-tight">System Ready</h3>
-                  <p className="text-slate-500 mt-3 max-w-sm mx-auto uppercase font-black text-[10px] tracking-widest">
-                    Configure your n8n agent to start analyzing firewall configurations
+                  <h3 className="text-3xl font-bold text-slate-900 tracking-tight">MySQL Active</h3>
+                  <p className="text-slate-500 mt-3 max-w-sm mx-auto uppercase font-black text-[10px] tracking-widest text-blue-600">
+                    Database connected and ready for persistence
                   </p>
                 </div>
               )}
@@ -160,18 +145,11 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {activeTab === 'explorer' && <ConfigExplorer />}
-        {activeTab === 'monitor' && <MonitorTab config={config} />}
+        {activeTab === 'explorer' && <ConfigExplorer onRuleSelect={navigateToMonitor} />}
+        {activeTab === 'monitor' && <MonitorTab config={config} initialFilter={filterPath} onClearFilter={() => setFilterPath(null)} />}
       </main>
     </div>
   );
-};
-
-const MOCK_REPORT_FORTINET: FirewallReport = {
-  overallScore: 78,
-  summary: "Sample report: Exposure detected.",
-  deviceInfo: { hostname: "LAB-FW-CORE", firmware: "v7.4.1", uptime: "14 Days" },
-  findings: [{ id: "1", title: "Global DNS Risk", category: "Network", risk: RiskLevel.CRITICAL, description: "Exposure.", recommendation: "Fix." }]
 };
 
 export default App;
