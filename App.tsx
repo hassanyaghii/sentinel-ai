@@ -7,8 +7,8 @@ import ConfigExplorer from './components/ConfigExplorer';
 import MonitorTab from './components/MonitorTab';
 import { AuditConfig } from './types';
 
-// Updated to the correct production webhook provided by the user
-const AUDIT_WEBHOOK = "https://10.1.240.2/webhook/analyze-firewall";
+// Points to our local Node.js backend which handles proxying to n8n and logging to MySQL
+const BACKEND_API = "/api/audit";
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'audit' | 'explorer' | 'monitor'>('audit');
@@ -21,7 +21,7 @@ const App: React.FC = () => {
     ipAddress: '',
     apiKey: '',
     vendor: 'paloalto',
-    webhookUrl: AUDIT_WEBHOOK
+    webhookUrl: BACKEND_API
   });
 
   const navigateToMonitor = (path: string) => {
@@ -35,45 +35,26 @@ const App: React.FC = () => {
     setReport(null);
     
     try {
-      console.log(`Initiating audit request to: ${AUDIT_WEBHOOK}`);
-      
-      const response = await fetch(AUDIT_WEBHOOK, {
+      const response = await fetch(BACKEND_API, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ipAddress: auditConfig.ipAddress,
           apiKey: auditConfig.apiKey,
-          vendor: auditConfig.vendor,
-          timestamp: new Date().toISOString()
+          vendor: auditConfig.vendor
         })
       });
 
       if (!response.ok) {
-        // If 404, it means the URL is wrong. If 500, the n8n workflow crashed.
-        const errorText = await response.text();
-        throw new Error(`Agent Error (${response.status}): ${errorText || 'Check n8n workflow logs'}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Backend Error: ${response.status}`);
       }
 
-      const rawData = await response.json();
-      
-      // n8n often returns an array or wraps the result in an 'output' field
-      let processedReport = rawData;
-      if (Array.isArray(rawData)) processedReport = rawData[0];
-      
-      // Dig into common n8n AI Agent output structures
-      processedReport = processedReport?.body ?? processedReport?.data ?? processedReport?.output ?? processedReport;
-
-      if (!processedReport || typeof processedReport !== 'object') {
-        throw new Error("The AI Agent connected but didn't return a valid audit object. Check Gemini prompt in n8n.");
-      }
-
-      setReport(processedReport);
+      const reportData = await response.json();
+      setReport(reportData);
     } catch (err: any) {
-      console.error("Audit Connection Error:", err);
-      setError(err.message || "Could not communicate with 10.1.240.2");
+      console.error("Audit Error:", err);
+      setError(err.message || "Failed to communicate with local backend.");
     } finally {
       setIsAuditing(false);
     }
@@ -116,30 +97,22 @@ const App: React.FC = () => {
                     <ShieldCheck className="w-6 h-6 text-blue-600 absolute inset-0 m-auto" />
                   </div>
                   <h3 className="mt-8 text-lg font-bold text-slate-900 uppercase tracking-widest text-center">AI Auditor is Processing...</h3>
-                  <p className="text-slate-400 text-sm mt-2 font-medium text-center">Contacting Agent at 10.1.240.2</p>
+                  <p className="text-slate-400 text-sm mt-2 font-medium text-center">Backend is calling Agent at 10.1.240.2 and logging to MySQL</p>
                 </div>
               ) : report ? (
                 <AuditReport report={report} />
               ) : error ? (
                 <div className="bg-red-50 border border-red-100 rounded-2xl p-12 text-center">
                   <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-                  <h3 className="text-lg font-bold text-red-900">Agent Communication Error</h3>
+                  <h3 className="text-lg font-bold text-red-900">Audit Failed</h3>
                   <p className="text-red-600 mt-2 text-sm">{error}</p>
-                  <div className="mt-6 flex flex-col items-center space-y-3">
-                    <button 
-                      onClick={() => handleRunAudit(config)} 
-                      className="px-6 py-2 bg-red-600 text-white rounded-lg font-bold text-xs uppercase"
-                    >
-                      Retry Connection
-                    </button>
-                    <p className="text-[10px] text-slate-400 italic">Verify the n8n Production Webhook is active.</p>
-                  </div>
+                  <button onClick={() => handleRunAudit(config)} className="mt-6 px-6 py-2 bg-red-600 text-white rounded-lg font-bold text-xs uppercase">Retry</button>
                 </div>
               ) : (
                 <div className="bg-white rounded-2xl p-12 flex flex-col items-center justify-center min-h-[500px] border-dashed border-2 border-slate-200">
                   <ShieldCheck className="w-20 h-20 text-slate-100 mb-6" />
                   <h3 className="text-2xl font-bold text-slate-800 tracking-tight">System Ready</h3>
-                  <p className="text-slate-400 mt-2 text-sm max-w-xs text-center">Configure the target firewall on the left to begin the automated security audit.</p>
+                  <p className="text-slate-400 mt-2 text-sm max-w-xs text-center">Enter credentials to run a full analysis and record results in the database.</p>
                 </div>
               )}
             </div>
