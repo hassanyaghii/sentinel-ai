@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Activity, RefreshCw, Filter, XCircle, ShieldCheck, Database, Clock } from 'lucide-react';
+import { Activity, RefreshCw, Filter, XCircle, ShieldCheck, Database, Clock, Zap } from 'lucide-react';
 import { AuditConfig } from '../types';
 
 const LOGS_API = "/api/logs";
@@ -52,6 +52,7 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
     setIsFetching(true);
     setError(null);
     try {
+      // Trigger the backend proxy, which hits n8n
       const response = await fetch(LOGS_API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -61,12 +62,12 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
         })
       });
       
-      if (!response.ok) throw new Error("Failed to reach agent");
+      if (!response.ok) throw new Error("n8n Orchestration failed");
       
-      // Refresh list from DB after n8n fetch completes
+      // Since n8n handles the DB INSERT, we simply refresh our local view from the DB now
       await fetchLogsFromDB();
     } catch (err: any) {
-      setError(err.message || "Failed to fetch telemetry from n8n agent");
+      setError(err.message || "Failed to sync with n8n agent");
     } finally {
       setIsFetching(false);
     }
@@ -85,10 +86,10 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-3">
-            <div className="p-3 rounded-xl text-white shadow-lg bg-slate-900"><Activity className="w-6 h-6" /></div>
+            <div className="p-3 rounded-xl text-white shadow-lg bg-blue-600"><Activity className="w-6 h-6" /></div>
             <div>
               <div className="flex items-center space-x-2">
-                <h2 className="text-xl font-black text-slate-900 tracking-tight uppercase">Live Telemetry Archive</h2>
+                <h2 className="text-xl font-black text-slate-900 tracking-tight uppercase">Audit Logs (n8n Managed)</h2>
                 {activeFilter && (
                   <div className="flex items-center space-x-2 bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full border border-blue-200">
                     <Filter className="w-3 h-3" />
@@ -98,25 +99,29 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
                 )}
               </div>
               <p className="text-xs text-slate-400 font-medium tracking-widest uppercase flex items-center space-x-1">
-                <Database className="w-3 h-3" />
-                <span>Persisted in MySQL @ 10.1.244.70</span>
+                <Zap className="w-3 h-3 text-amber-500" />
+                <span>Orchestration flow: Agent -> n8n -> MySQL</span>
               </p>
             </div>
           </div>
-          <button onClick={handleFetchLogs} disabled={isFetching} className="px-8 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest bg-blue-600 text-white hover:bg-blue-700 shadow-lg flex items-center space-x-3">
+          <button 
+            onClick={handleFetchLogs} 
+            disabled={isFetching} 
+            className="px-8 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest bg-slate-900 text-white hover:bg-black shadow-lg flex items-center space-x-3 transition-all active:scale-95"
+          >
             {isFetching ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            <span>Fetch & Sync DB</span>
+            <span>Trigger n8n Sync</span>
           </button>
         </div>
         
         <div className="flex items-center space-x-4 bg-slate-50 p-3 rounded-xl border border-slate-100">
            <div className="flex-1">
-              <span className="text-[10px] block font-black text-slate-400 uppercase tracking-widest">Active Device</span>
-              <span className="text-xs font-mono font-bold text-slate-700">{initialConfig.ipAddress || 'Not Configured'}</span>
+              <span className="text-[10px] block font-black text-slate-400 uppercase tracking-widest">Target IP</span>
+              <span className="text-xs font-mono font-bold text-slate-700">{initialConfig.ipAddress || 'Not Set'}</span>
            </div>
            <div className="w-px h-8 bg-slate-200" />
            <div className="flex-1">
-              <span className="text-[10px] block font-black text-slate-400 uppercase tracking-widest">Total Records</span>
+              <span className="text-[10px] block font-black text-slate-400 uppercase tracking-widest">DB Records</span>
               <span className="text-xs font-bold text-slate-700">{logs.length}</span>
            </div>
         </div>
@@ -128,16 +133,16 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
           <table className="min-w-full divide-y divide-slate-200">
             <thead className="bg-slate-50 sticky top-0 z-10">
               <tr>
-                <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase text-left">Timestamp</th>
+                <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase text-left">Time</th>
                 <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase text-left">Admin</th>
                 <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase text-left">Action</th>
-                <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase text-left">Configuration Changes</th>
+                <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase text-left">Log Path & Changes</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredLogs.length > 0 ? filteredLogs.map((log, idx) => (
                 <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
-                  <td className="px-4 py-4 text-[11px] font-mono text-blue-600 font-bold whitespace-nowrap">
+                  <td className="px-4 py-4 text-[11px] font-mono text-slate-500 font-bold whitespace-nowrap">
                     <div className="flex items-center space-x-2">
                        <Clock className="w-3 h-3 text-slate-300" />
                        <span>{new Date(log.receive_time).toLocaleString()}</span>
@@ -156,19 +161,14 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
                       <div className="text-[10px] font-mono line-clamp-1 text-slate-400 bg-slate-50 p-1 rounded italic">{log.config_path}</div>
                       {log.after_change && (
                         <div className="text-[10px] bg-emerald-50 text-emerald-700 p-2 rounded border border-emerald-100 font-mono">
-                           <span className="font-black mr-2">AFTER:</span>{log.after_change}
-                        </div>
-                      )}
-                      {log.before_change && (
-                        <div className="text-[10px] bg-slate-50 text-slate-500 p-2 rounded border border-slate-100 font-mono">
-                           <span className="font-black mr-2">BEFORE:</span>{log.before_change}
+                           <span className="font-black mr-2">CHANGED TO:</span>{log.after_change}
                         </div>
                       )}
                     </div>
                   </td>
                 </tr>
               )) : (
-                <tr><td colSpan={4} className="py-40 text-center text-slate-300 uppercase tracking-widest text-[10px] font-black">No telemetry data in database</td></tr>
+                <tr><td colSpan={4} className="py-40 text-center text-slate-300 uppercase tracking-widest text-[10px] font-black">No telemetry data found in database</td></tr>
               )}
             </tbody>
           </table>
