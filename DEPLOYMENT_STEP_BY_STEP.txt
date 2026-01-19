@@ -1,57 +1,49 @@
 
-SENTINEL AI DEPLOYMENT GUIDE (SERVER: 10.1.244.70)
-=================================================
+FINAL DEPLOYMENT GUIDE: 10.1.244.70
+===================================
 
-STEP 1: PREPARE THE DATABASE
-----------------------------
-1. Open your terminal on the server (10.1.244.70).
-2. Log into MySQL:
-   mysql -u root -p
-3. Copy and Paste these commands:
+This app is now fully configured to use your 10.1.240.2 webhooks.
+The interface is clean and ready for production use.
 
-   CREATE DATABASE IF NOT EXISTS sentinel_audit;
-   CREATE USER IF NOT EXISTS 'sentinel_user'@'%' IDENTIFIED BY 'sentinel_pass';
-   GRANT ALL PRIVILEGES ON sentinel_audit.* TO 'sentinel_user'@'%';
-   FLUSH PRIVILEGES;
+STEP 1: DATABASE SETUP (ON 10.1.244.70)
+--------------------------------------
+Login to MySQL and initialize the required tables:
 
-   USE sentinel_audit;
+CREATE DATABASE IF NOT EXISTS sentinel_audit;
+USE sentinel_audit;
 
-   CREATE TABLE IF NOT EXISTS audit_reports (
-       id INT AUTO_INCREMENT PRIMARY KEY,
-       ip_address VARCHAR(45) NOT NULL,
-       hostname VARCHAR(255),
-       overall_score INT,
-       summary TEXT,
-       device_firmware VARCHAR(50),
-       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-   );
+CREATE TABLE audit_reports (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    ip_address VARCHAR(45) NOT NULL,
+    hostname VARCHAR(255),
+    overall_score INT,
+    summary TEXT,
+    device_firmware VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-   CREATE TABLE IF NOT EXISTS security_findings (
-       id INT AUTO_INCREMENT PRIMARY KEY,
-       report_id INT,
-       risk_level VARCHAR(20),
-       category VARCHAR(100),
-       title VARCHAR(255),
-       description TEXT,
-       recommendation TEXT,
-       FOREIGN KEY (report_id) REFERENCES audit_reports(id) ON DELETE CASCADE
-   );
+CREATE TABLE security_findings (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    report_id INT,
+    risk_level VARCHAR(20),
+    category VARCHAR(100),
+    title VARCHAR(255),
+    description TEXT,
+    recommendation TEXT,
+    FOREIGN KEY (report_id) REFERENCES audit_reports(id) ON DELETE CASCADE
+);
 
-STEP 2: DOWNLOAD BACKEND DEPENDENCIES
--------------------------------------
-1. In your app directory on the server, run:
-   npm install express mysql2 cors
+STEP 2: LAUNCH BACKEND
+----------------------
+In your project folder on the server:
+1. npm install express mysql2 cors
+2. node server.js (or use 'pm2 start server.js' to keep it running)
 
-STEP 3: START THE BACKEND
--------------------------
-1. Run the backend script:
-   node server.js
-2. (Optional) To keep it running even if you close the terminal, install PM2:
-   npm install -g pm2
-   pm2 start server.js --name sentinel-api
+STEP 3: ACCESS APP
+------------------
+1. Open Chrome/Edge.
+2. Go to: http://10.1.244.70
+3. Enter your firewall details and click "Initiate Audit".
 
-STEP 4: ACCESS THE UI
----------------------
-1. Open your browser and go to: http://10.1.244.70
-2. In the "Server API Endpoint" field in the Audit tab, ensure it says:
-   http://10.1.244.70:3001/api/audit
+Note: The app will automatically route all requests to your 
+automation agent at 10.1.240.2.

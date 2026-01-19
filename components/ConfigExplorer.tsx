@@ -1,18 +1,18 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Shield, 
-  Globe, 
-  Network, 
-  Trash2, 
-  Upload, 
   RefreshCw, 
-  Database,
-  Search,
-  Diff,
   Download,
-  Eye,
-  Activity
+  Activity,
+  Server,
+  Key,
+  ShieldCheck,
+  // Fix: Added missing Database icon import
+  Database
 } from 'lucide-react';
+
+const CONFIG_WEBHOOK = "https://10.1.240.2/webhook/getconfig";
 
 interface SavedConfig {
   id: string;
@@ -34,12 +34,6 @@ interface PaloRule {
   path: string;
 }
 
-interface PaloInterface {
-  name: string;
-  ip: string;
-  status: string;
-}
-
 interface ConfigExplorerProps {
   onRuleSelect?: (path: string) => void;
 }
@@ -47,13 +41,9 @@ interface ConfigExplorerProps {
 const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onRuleSelect }) => {
   const [configs, setConfigs] = useState<SavedConfig[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [compareId, setCompareId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'view' | 'compare'>('view');
-  const [activeTab, setActiveTab] = useState<'security' | 'nat' | 'interfaces' | 'raw'>('security');
   
   const [ipAddress, setIpAddress] = useState('');
   const [apiKey, setApiKey] = useState('');
-  const [webhookUrl, setWebhookUrl] = useState('');
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractError, setExtractError] = useState<string | null>(null);
 
@@ -89,16 +79,17 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onRuleSelect }) => {
     setIsExtracting(true);
     setExtractError(null);
     try {
-      const response = await fetch(webhookUrl, {
+      const response = await fetch(CONFIG_WEBHOOK, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ipAddress, apiKey, action: 'get_config' })
       });
+      if (!response.ok) throw new Error(`Status: ${response.status}`);
       const data = await response.json();
       const result = Array.isArray(data) ? data[0] : data;
       processNewConfig(result.hostname || ipAddress, ipAddress, result.firewallConfig || JSON.stringify(result));
     } catch (err: any) {
-      setExtractError(err.message);
+      setExtractError(err.message || "Failed to reach agent at 10.1.240.2");
     } finally {
       setIsExtracting(false);
     }
@@ -137,10 +128,10 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onRuleSelect }) => {
       action: e.content.match(/<action>([^<]*)<\/action>/i)?.[1]?.toLowerCase() || 'N/A',
       app: getMembers(e.content, 'application'),
       disabled: e.content.includes('<disabled>yes</disabled>'),
-      path: e.name // Simplified path for log filtering
+      path: e.name
     }));
 
-    return { policies, nat: [], interfaces: [] };
+    return { policies };
   };
 
   const selected = configs.find(c => c.id === selectedId);
@@ -152,8 +143,11 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onRuleSelect }) => {
         <div className="flex items-center space-x-3">
           <div className="p-2.5 bg-slate-900 rounded-xl text-white shadow-lg"><Shield className="w-5 h-5" /></div>
           <div>
-            <h2 className="text-lg font-black text-slate-900 tracking-widest">CONFIG EXPLORER</h2>
-            <p className="text-xs text-slate-400 font-medium">Database Persistence Active</p>
+            <h2 className="text-lg font-black text-slate-900 tracking-widest uppercase">Inventory</h2>
+            <p className="text-xs text-slate-400 font-medium flex items-center space-x-1">
+              <ShieldCheck className="w-3 h-3" />
+              <span>Direct Link: 10.1.240.2</span>
+            </p>
           </div>
         </div>
       </div>
@@ -161,33 +155,43 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onRuleSelect }) => {
       <div className="flex-1 flex overflow-hidden gap-6">
         <div className="w-80 flex flex-col space-y-4 shrink-0">
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
-            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pull Configuration</h3>
+            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Configuration Pull</h3>
             <form onSubmit={handleRunExtraction} className="space-y-3">
-              <input type="text" placeholder="Firewall IP" value={ipAddress} onChange={(e) => setIpAddress(e.target.value)} className="w-full px-4 py-2.5 text-xs border border-slate-200 rounded-xl outline-none" />
-              <input type="password" placeholder="API Key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} className="w-full px-4 py-2.5 text-xs border border-slate-200 rounded-xl outline-none" />
-              <input type="text" placeholder="Webhook URL" value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} className="w-full px-4 py-2.5 text-xs border border-slate-200 rounded-xl outline-none" />
-              <button type="submit" disabled={isExtracting} className="w-full py-2.5 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-xl flex items-center justify-center space-x-2">
+              <div className="relative">
+                <Server className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                <input type="text" placeholder="Firewall IP" value={ipAddress} onChange={(e) => setIpAddress(e.target.value)} className="w-full pl-9 pr-4 py-2.5 text-xs border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100" />
+              </div>
+              <div className="relative">
+                <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                <input type="password" placeholder="API Key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} className="w-full pl-9 pr-4 py-2.5 text-xs border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100" />
+              </div>
+              <button type="submit" disabled={isExtracting} className="w-full py-2.5 bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl flex items-center justify-center space-x-2 shadow-lg hover:bg-blue-700 active:scale-95 transition-all">
                 {isExtracting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                <span>Fetch Snapshot</span>
+                <span>{isExtracting ? 'Connecting...' : 'Fetch XML Snapshot'}</span>
               </button>
             </form>
+            {extractError && <p className="text-[10px] text-red-500 font-bold bg-red-50 p-2 rounded">{extractError}</p>}
           </div>
 
           <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col p-3 space-y-2">
-            {configs.map(c => (
-              <div key={c.id} onClick={() => setSelectedId(c.id)} className={`p-3 rounded-xl border transition-all cursor-pointer ${selectedId === c.id ? 'bg-blue-50 border-blue-200' : 'bg-slate-50'}`}>
-                <p className="font-bold text-slate-800 text-[11px] truncate">{c.hostname}</p>
-                <p className="text-[9px] text-slate-400 mt-1">{c.timestamp}</p>
-              </div>
-            ))}
+            <h4 className="px-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">History</h4>
+            <div className="flex-1 overflow-auto custom-scrollbar space-y-2">
+              {configs.map(c => (
+                <div key={c.id} onClick={() => setSelectedId(c.id)} className={`p-3 rounded-xl border transition-all cursor-pointer ${selectedId === c.id ? 'bg-blue-600 text-white border-blue-400 shadow-md' : 'bg-slate-50 border-slate-100 hover:border-slate-300'}`}>
+                  <p className={`font-bold text-[11px] truncate ${selectedId === c.id ? 'text-white' : 'text-slate-800'}`}>{c.hostname}</p>
+                  <p className={`text-[9px] mt-1 ${selectedId === c.id ? 'text-blue-100' : 'text-slate-400'}`}>{c.timestamp}</p>
+                </div>
+              ))}
+              {configs.length === 0 && <p className="text-center py-10 text-[10px] text-slate-300 font-bold uppercase">No data stored</p>}
+            </div>
           </div>
         </div>
 
         <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-          {selectedData && (
+          {selectedData ? (
             <div className="flex-1 overflow-auto custom-scrollbar">
               <table className="w-full text-left text-xs">
-                <thead className="sticky top-0 bg-slate-50 border-b border-slate-100">
+                <thead className="sticky top-0 bg-slate-50 border-b border-slate-100 z-10">
                   <tr className="text-[10px] font-black text-slate-400 uppercase">
                     <th className="px-6 py-4">Rule Name</th>
                     <th className="px-6 py-4">Addressing</th>
@@ -218,6 +222,12 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onRuleSelect }) => {
                   ))}
                 </tbody>
               </table>
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center p-12 text-center opacity-30">
+              <Database className="w-20 h-20 mb-4" />
+              <h3 className="text-xl font-bold uppercase tracking-widest">Snapshot Required</h3>
+              <p className="text-sm">Fetch a new configuration snapshot from the panel to explore rules.</p>
             </div>
           )}
         </div>

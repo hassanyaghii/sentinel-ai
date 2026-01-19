@@ -6,15 +6,13 @@ import {
   Monitor, 
   Server, 
   Key, 
-  Globe,
-  ShieldAlert,
-  Zap,
-  Lock,
-  Unlock,
-  Filter,
-  XCircle
+  Filter, 
+  XCircle,
+  ShieldCheck
 } from 'lucide-react';
 import { AuditConfig } from '../types';
+
+const LOGS_WEBHOOK = "https://10.1.240.2/webhook/logs";
 
 interface ConfigLog {
   time: string;
@@ -58,19 +56,19 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
     setIsFetching(true);
     setError(null);
     try {
-      // Calling the local server API instead of n8n
-      const endpoint = localConfig.webhookUrl.includes('/api/audit') 
-        ? localConfig.webhookUrl.replace('/api/audit', '/api/logs')
-        : "http://localhost:3001/api/logs";
-
-      const response = await fetch(endpoint, {
+      const response = await fetch(LOGS_WEBHOOK, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fw_ip: localConfig.ipAddress, api_key: localConfig.apiKey, action: 'get_logs' })
+        body: JSON.stringify({ 
+          fw_ip: localConfig.ipAddress, 
+          api_key: localConfig.apiKey, 
+          action: 'get_logs' 
+        })
       });
       
       const rawData = await response.json();
-      const data = rawData.response?.result?.log?.logs?.entry || rawData.response?.result?.log?.entry || [];
+      // Handle various response formats from the webhook
+      const data = rawData.response?.result?.log?.logs?.entry || rawData.response?.result?.log?.entry || rawData.logs || [];
       const entries = Array.isArray(data) ? data : [data];
 
       const parsedLogs: ConfigLog[] = entries.map((entry: any) => ({
@@ -82,13 +80,13 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
         result: entry.result || 'N/A',
         path: entry.path || '',
         before: entry['before-change-preview'] || '',
-        after: entry['after-change-preview'] || '',
+        after: entry['after-change-preview'] || entry.after_change_preview || '',
         sequence: entry.seqno || ''
       }));
 
       setLogs(parsedLogs);
     } catch (err: any) {
-      setError(err.message || "Backend unreachable.");
+      setError(err.message || "Failed to fetch telemetry from 10.1.240.2");
     } finally {
       setIsFetching(false);
     }
@@ -122,7 +120,10 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
                   </div>
                 )}
               </div>
-              <p className="text-xs text-slate-400 font-medium tracking-widest uppercase">Live Server Telemetry</p>
+              <p className="text-xs text-slate-400 font-medium tracking-widest uppercase flex items-center space-x-1">
+                <ShieldCheck className="w-3 h-3" />
+                <span>Source: 10.1.240.2</span>
+              </p>
             </div>
           </div>
           
@@ -136,23 +137,20 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center space-x-1"><Server className="w-3 h-3" /><span>Firewall Host</span></label>
             <input type="text" name="ipAddress" value={localConfig.ipAddress} onChange={handleConfigChange} className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl font-mono outline-none focus:ring-2 focus:ring-blue-100" />
           </div>
           <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center space-x-1"><Key className="w-3 h-3" /><span>API Key</span></label>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center space-x-1"><Key className="w-3 h-3" /><span>API Key / Token</span></label>
             <input type="password" name="apiKey" value={localConfig.apiKey} onChange={handleConfigChange} className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100" />
-          </div>
-          <div className="space-y-2">
-            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center space-x-1"><Globe className="w-3 h-3" /><span>Backend API</span></label>
-            <input type="text" name="webhookUrl" value={localConfig.webhookUrl} onChange={handleConfigChange} className="w-full px-4 py-2.5 text-sm border border-slate-200 rounded-xl text-blue-600 font-bold" />
           </div>
         </div>
       </div>
 
       <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+        {error && <div className="p-4 bg-red-50 text-red-600 text-xs font-bold border-b border-red-100">{error}</div>}
         <div className="flex-1 overflow-auto custom-scrollbar">
           <table className="min-w-full divide-y divide-slate-200">
             <thead className="bg-slate-50 sticky top-0 z-10">
@@ -171,7 +169,7 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
                   <td className="px-4 py-4">
                     <span className="px-2 py-0.5 bg-slate-100 rounded text-[9px] font-bold text-slate-600 uppercase">{log.cmd}</span>
                   </td>
-                  <td className="px-4 py-4">
+                  <td className="px-4 py-4 text-xs">
                     <div className="space-y-1">
                       <div className={`text-[10px] font-mono line-clamp-1 ${activeFilter ? 'text-blue-600 font-bold underline decoration-blue-200' : 'text-slate-400'}`}>{log.path}</div>
                       {log.after && <div className="text-[10px] bg-emerald-50 text-emerald-700 p-1.5 rounded border border-emerald-100 font-mono">+{log.after}</div>}
@@ -182,7 +180,7 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
                 <tr>
                   <td colSpan={4} className="py-40 text-center">
                     <Monitor className="w-16 h-16 text-slate-100 mx-auto mb-4" />
-                    <p className="text-xs font-black text-slate-300 uppercase tracking-widest">{activeFilter ? 'No matching logs for this rule' : 'Backend Telemetry Idle'}</p>
+                    <p className="text-xs font-black text-slate-300 uppercase tracking-widest">{activeFilter ? 'No matching logs found' : 'Ready to fetch telemetry'}</p>
                   </td>
                 </tr>
               )}
