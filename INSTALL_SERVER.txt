@@ -1,0 +1,49 @@
+
+SENTINEL AI - SERVER INSTALLATION GUIDE
+=======================================
+
+1. DATABASE PREPARATION (MySQL)
+-------------------------------
+Log into your MySQL console and run these commands:
+
+CREATE DATABASE sentinel_audit;
+CREATE USER 'sentinel_user'@'localhost' IDENTIFIED BY 'sentinel_pass';
+GRANT ALL PRIVILEGES ON sentinel_audit.* TO 'sentinel_user'@'localhost';
+FLUSH PRIVILEGES;
+
+USE sentinel_audit;
+
+CREATE TABLE audit_reports (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    ip_address VARCHAR(45) NOT NULL,
+    hostname VARCHAR(255),
+    overall_score INT,
+    summary TEXT,
+    device_firmware VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE security_findings (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    report_id INT,
+    risk_level VARCHAR(20),
+    category VARCHAR(100),
+    title VARCHAR(255),
+    description TEXT,
+    recommendation TEXT,
+    FOREIGN KEY (report_id) REFERENCES audit_reports(id) ON DELETE CASCADE
+);
+
+2. BACKEND SETUP
+----------------
+Navigate to the app folder:
+$ npm install express mysql2 cors
+$ node server.js
+
+3. FRONTEND ACCESS
+------------------
+The React application will now automatically communicate with the local 
+Node.js backend (server.js) running on port 3001.
+
+Note: If accessing from a remote browser, change 'localhost' in App.tsx 
+to your server's actual IP address.

@@ -1,0 +1,23 @@
+
+HOW TO RUN SENTINEL WITHOUT N8N
+===============================
+
+1. START MYSQL
+--------------
+Ensure you have MySQL installed or run the docker service:
+docker run --name sentinel_db -e MYSQL_ROOT_PASSWORD=sentinel_root_pass -e MYSQL_DATABASE=sentinel_audit -e MYSQL_USER=sentinel_user -e MYSQL_PASSWORD=sentinel_pass -p 3306:3306 -d mysql:8.0
+
+2. INITIALIZE TABLES
+--------------------
+Run the SQL in schema.sql against your database.
+
+3. START THE BACKEND
+--------------------
+Open a terminal on your server:
+npm install express mysql2 cors
+node server.js
+
+4. ACCESS THE WEB APP
+---------------------
+The web app will now send requests to http://localhost:3001 instead of n8n.
+No more CORS issues, no more n8n configuration needed.
