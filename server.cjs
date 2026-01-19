@@ -7,201 +7,106 @@ const cors = require("cors");
 const app = express();
 const port = process.env.PORT || 3001;
 
-// ✅ Use nginx proxy for n8n (recommended)
-const N8N_AUDIT_URL = "https://10.1.244.70/n8n/webhook/analyze-firewall";
-const N8N_CONFIG_URL = "https://10.1.244.70/n8n/webhook/getconfig";
-const N8N_LOGS_URL = "https://10.1.244.70/n8n/webhook/logs";
+// n8n Webhook URLs
+const N8N_AUDIT_URL = "https://10.1.240.2/webhook/analyze-firewall";
+const N8N_CONFIG_URL = "https://10.1.240.2/webhook/getconfig";
+const N8N_LOGS_URL = "https://10.1.240.2/webhook/logs";
 
 app.use(cors());
-app.use(express.json({ limit: "10mb" }));
+app.use(express.json({ limit: '10mb' }));
 
 const dbConfig = {
   host: process.env.DB_HOST || "127.0.0.1",
   user: process.env.DB_USER || "sentinel_user",
-  password: process.env.DB_PASS || "", // ✅ safer
+  password: process.env.DB_PASS || "sentinel_pass",
   database: process.env.DB_NAME || "sentinel_audit",
   waitForConnections: true,
-  connectionLimit: 10,
+  connectionLimit: 10
 };
 
 let pool = null;
-
 async function initDB() {
   try {
     pool = await mysql.createPool(dbConfig);
-    await pool.query("SELECT 1");
     console.log("✅ MySQL Connected to:", dbConfig.database);
   } catch (err) {
     console.error("❌ DB Connection Error:", err.message);
-    pool = null;
   }
 }
 initDB();
 
-function unwrapN8N(rawData) {
-  let data = Array.isArray(rawData) ? rawData[0] : rawData;
-  return data?.body ?? data?.data ?? data?.output ?? data;
-}
-
 /**
- * DATABASE READ ENDPOINTS
+ * READ ENDPOINTS (Frontend reads what n8n inserted)
  */
 app.get("/api/reports", async (req, res) => {
   try {
-    if (!pool) return res.status(500).json({ error: "DB not connected" });
-
-    const [rows] = await pool.execute(
-      `SELECT id, ip_address, hostname, overall_score, summary, device_firmware, created_at
-       FROM audit_reports
-       ORDER BY created_at DESC`
-    );
-
+    const [rows] = await pool.execute("SELECT id, ip_address, hostname, overall_score, summary, device_firmware, created_at FROM audit_reports ORDER BY created_at DESC");
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: "Failed to fetch reports" });
+    res.status(500).json({ error: "Failed to fetch reports from DB" });
   }
 });
 
-app.get("/api/reports/:id", async (req, res) => {
+app.get("/api/logs", async (req, res) => {
   try {
-    if (!pool) return res.status(500).json({ error: "DB not connected" });
-
-    const [report] = await pool.execute(
-      "SELECT * FROM audit_reports WHERE id = ?",
-      [req.params.id]
-    );
-    if (report.length === 0) return res.status(404).json({ error: "Report not found" });
-
-    const [findings] = await pool.execute(
-      "SELECT * FROM security_findings WHERE report_id = ?",
-      [req.params.id]
-    );
-
-    res.json({ ...report[0], findings });
+    const [rows] = await pool.execute("SELECT * FROM firewall_logs ORDER BY receive_time DESC LIMIT 500");
+    res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: "Failed to fetch report details" });
+    res.status(500).json({ error: "Failed to fetch logs from DB" });
   }
 });
 
 /**
- * ACTION PROXY ENDPOINTS
+ * PROXY ENDPOINTS (Triggers n8n, which handles the logic and DB insertion)
  */
+
+// 1. Audit Proxy: Frontend -> Backend -> n8n -> (AI -> DB) -> Return to Frontend
 app.post("/api/audit", async (req, res) => {
   try {
-    const { ipAddress, apiKey, vendor } = req.body;
-
     const response = await fetch(N8N_AUDIT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ipAddress, apiKey, vendor }),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body)
     });
-
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`n8n audit error ${response.status}: ${text}`);
-    }
-
-    const rawData = await response.json();
-    const report = unwrapN8N(rawData);
-
-    // Save to MySQL
-    if (pool && report) {
-      const overallScore = report.overallScore ?? report.overall_score ?? null;
-      const hostname =
-        report.deviceInfo?.hostname ?? report.device_info?.hostname ?? "Unknown";
-      const firmware =
-        report.deviceInfo?.firmware ?? report.device_info?.firmware ?? "Unknown";
-      const summary = report.summary ?? "Audit complete";
-
-      if (overallScore !== null) {
-        const [resObj] = await pool.execute(
-          `INSERT INTO audit_reports (ip_address, hostname, overall_score, summary, device_firmware)
-           VALUES (?, ?, ?, ?, ?)`,
-          [ipAddress, hostname, overallScore, summary, firmware]
-        );
-
-        const reportId = resObj.insertId;
-        const findings = report.findings ?? [];
-
-        for (const f of findings) {
-          await pool.execute(
-            `INSERT INTO security_findings (report_id, risk_level, category, title, description, recommendation)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [
-              reportId,
-              f.risk ?? "Low",
-              f.category ?? "General",
-              f.title ?? "Finding",
-              f.description ?? "",
-              f.recommendation ?? "",
-            ]
-          );
-        }
-
-        console.log(`✅ Audit saved to DB. ID=${reportId}`);
-      }
-    }
-
-    res.json(report);
+    const data = await response.json();
+    // n8n returns the final report object which we forward to frontend
+    res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "n8n Audit failed: " + err.message });
   }
 });
 
-app.post("/api/config", async (req, res) => {
-  try {
-    const { ipAddress, apiKey, vendor } = req.body;
-
-    const response = await fetch(N8N_CONFIG_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ipAddress, apiKey, vendor }),
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`n8n config error ${response.status}: ${text}`);
-    }
-
-    const rawData = await response.json();
-    const result = unwrapN8N(rawData);
-
-    // Save full XML snapshot
-    if (pool && result?.firewallConfig) {
-      await pool.execute(
-        "INSERT INTO config_snapshots (ip_address, hostname, raw_xml) VALUES (?, ?, ?)",
-        [ipAddress, result.hostname ?? "Unknown", result.firewallConfig]
-      );
-      console.log("✅ Config snapshot saved");
-    }
-
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
+// 2. Logs Proxy: Frontend -> Backend -> n8n -> (Firewall Logs -> DB) -> Return to Frontend
 app.post("/api/logs", async (req, res) => {
   try {
     const response = await fetch(N8N_LOGS_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(req.body),
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...req.body, action: 'get_logs' })
     });
-
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`n8n logs error ${response.status}: ${text}`);
-    }
-
-    const rawData = await response.json();
-    const result = unwrapN8N(rawData);
-    res.json(result);
+    const data = await response.json();
+    // n8n returns logs which we forward to frontend (Frontend will also refresh from DB)
+    res.json(data);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "n8n Logs fetch failed: " + err.message });
+  }
+});
+
+// 3. Config Proxy: Frontend -> Backend -> n8n -> (Get XML) -> Return to Frontend
+app.post("/api/config", async (req, res) => {
+  try {
+    const response = await fetch(N8N_CONFIG_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body)
+    });
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: "n8n Config fetch failed: " + err.message });
   }
 });
 
 app.listen(port, "0.0.0.0", () => {
-  console.log(`🚀 Sentinel Engine running on port ${port}`);
+  console.log(`🚀 Proxy active on port ${port}. Orchestration handled by n8n @ 10.1.240.2`);
 });
