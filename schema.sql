@@ -33,3 +33,19 @@ CREATE TABLE IF NOT EXISTS config_snapshots (
     raw_xml LONGTEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Store Firewall Configuration Logs (Telemetry)
+CREATE TABLE IF NOT EXISTS firewall_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    ip_address VARCHAR(45),
+    receive_time DATETIME,
+    admin_user VARCHAR(100),
+    client_type VARCHAR(50),
+    command VARCHAR(50),
+    result VARCHAR(50),
+    config_path TEXT,
+    before_change TEXT,
+    after_change TEXT,
+    sequence_no VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

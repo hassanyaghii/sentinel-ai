@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Database, Activity, History, Clock, ChevronRight, AlertCircle } from 'lucide-react';
+import { ShieldCheck, Database, Activity, History, Clock, ChevronRight } from 'lucide-react';
 import SetupForm from './components/SetupForm';
 import AuditReport from './components/AuditReport';
 import ConfigExplorer from './components/ConfigExplorer';
@@ -14,8 +14,7 @@ const App: React.FC = () => {
   const [isAuditing, setIsAuditing] = useState(false);
   const [report, setReport] = useState<any>(null);
   const [dbReports, setDbReports] = useState<any[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedArchiveId, setSelectedArchiveId] = useState<number | null>(null);
+  const [logFilter, setLogFilter] = useState<string | null>(null);
   
   const [config, setConfig] = useState<AuditConfig>({
     ipAddress: '',
@@ -49,24 +48,27 @@ const App: React.FC = () => {
     }
   };
 
+  const handleJumpToLogs = (path: string) => {
+    setLogFilter(path);
+    setActiveTab('monitor');
+  };
+
   useEffect(() => {
     if (activeTab === 'archive') fetchArchive();
   }, [activeTab]);
 
   const handleRunAudit = async (auditConfig: AuditConfig) => {
     setIsAuditing(true);
-    setError(null);
     try {
       const response = await fetch(`${API_BASE}/audit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(auditConfig)
       });
-      if (!response.ok) throw new Error("Agent connection failed");
       const data = await response.json();
       setReport(data);
     } catch (err: any) {
-      setError(err.message);
+      console.error(err.message);
     } finally {
       setIsAuditing(false);
     }
@@ -105,7 +107,6 @@ const App: React.FC = () => {
                 <div className="bg-white rounded-2xl p-12 flex flex-col items-center justify-center min-h-[500px] border border-slate-200">
                   <div className="w-16 h-16 border-4 border-blue-50 border-t-blue-600 rounded-full animate-spin"></div>
                   <h3 className="mt-8 text-lg font-bold text-slate-900 uppercase tracking-widest">Processing Configuration...</h3>
-                  <p className="text-slate-400 text-sm mt-2">Uploading XML to n8n AI Agent</p>
                 </div>
               ) : report ? (
                 <AuditReport report={report} />
@@ -113,7 +114,6 @@ const App: React.FC = () => {
                 <div className="bg-white rounded-2xl p-12 flex flex-col items-center justify-center min-h-[500px] border-dashed border-2 border-slate-200 text-center">
                   <Activity className="w-16 h-16 text-slate-200 mb-4" />
                   <h3 className="text-xl font-bold text-slate-800 uppercase tracking-tight">System Ready</h3>
-                  <p className="text-slate-400 text-sm mt-1">Audit results are automatically persisted to MySQL.</p>
                 </div>
               )}
             </div>
@@ -124,8 +124,8 @@ const App: React.FC = () => {
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden min-h-[600px]">
             <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
               <div>
-                <h2 className="text-lg font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">History</h2>
-                <p className="text-xs text-slate-400 font-medium">Archived security scans for vsys1</p>
+                <h2 className="text-lg font-black text-slate-900 uppercase tracking-widest">History</h2>
+                <p className="text-xs text-slate-400 font-medium tracking-tighter">Archived security scans</p>
               </div>
             </div>
             <div className="p-6">
@@ -149,17 +149,14 @@ const App: React.FC = () => {
                   ))}
                 </div>
               ) : (
-                <div className="py-40 text-center opacity-30">
-                  <Database className="w-12 h-12 mx-auto mb-4" />
-                  <p className="font-black uppercase tracking-widest text-xs">Archive Empty</p>
-                </div>
+                <div className="py-40 text-center opacity-30"><Database className="w-12 h-12 mx-auto mb-4" /><p className="font-black uppercase tracking-widest text-xs">Archive Empty</p></div>
               )}
             </div>
           </div>
         )}
 
-        {activeTab === 'explorer' && <ConfigExplorer />}
-        {activeTab === 'monitor' && <MonitorTab config={config} />}
+        {activeTab === 'explorer' && <ConfigExplorer onJumpToLogs={handleJumpToLogs} />}
+        {activeTab === 'monitor' && <MonitorTab config={config} initialFilter={logFilter} onClearFilter={() => setLogFilter(null)} />}
       </main>
     </div>
   );
