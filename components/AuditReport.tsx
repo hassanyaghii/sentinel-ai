@@ -1,6 +1,5 @@
 
 import React, { useState, useMemo } from 'react';
-import { FirewallReport, RiskLevel, SecurityFinding } from '../types';
 import { 
   ShieldAlert, 
   CheckCircle2, 
@@ -19,8 +18,9 @@ interface AuditReportProps {
 const FindingItem: React.FC<{ finding: any }> = ({ finding }) => {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Use robust type coercion and defaults
-  const riskLabel = String(finding?.risk || 'Low');
+  // Normalize risk field (AI Agents often return 'risk' or 'riskLevel' or 'severity')
+  const rawRisk = finding?.risk || finding?.riskLevel || finding?.severity || 'Low';
+  const riskLabel = String(rawRisk);
   const riskKey = riskLabel.toLowerCase();
   
   let badgeClasses = 'bg-slate-400 text-white';
@@ -41,8 +41,8 @@ const FindingItem: React.FC<{ finding: any }> = ({ finding }) => {
           <div className={`p-3 rounded-xl transition-colors ${isUrgent ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-500'}`}>
             {isUrgent ? <ShieldAlert className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5" />}
           </div>
-          <div>
-            <h4 className="font-bold text-slate-800 leading-tight group-hover:text-blue-600 transition-colors">{finding?.title || 'System Finding'}</h4>
+          <div className="flex-1 min-w-0">
+            <h4 className="font-bold text-slate-800 leading-tight group-hover:text-blue-600 transition-colors truncate">{finding?.title || 'System Finding'}</h4>
             <div className="flex items-center space-x-2 mt-1.5">
                <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider ${badgeClasses}`}>
                 {riskLabel}
@@ -51,7 +51,7 @@ const FindingItem: React.FC<{ finding: any }> = ({ finding }) => {
             </div>
           </div>
         </div>
-        <div className="ml-4 p-2 bg-slate-50 rounded-lg group-hover:bg-blue-50 transition-colors">
+        <div className="ml-4 p-2 bg-slate-50 rounded-lg group-hover:bg-blue-50 transition-colors shrink-0">
           {isOpen ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
         </div>
       </button>
@@ -81,29 +81,27 @@ const FindingItem: React.FC<{ finding: any }> = ({ finding }) => {
 const AuditReport: React.FC<AuditReportProps> = ({ report }) => {
   const [showFullSummary, setShowFullSummary] = useState(false);
 
-  // --- THE ULTIMATE DEFENSIVE WRAPPER ---
   const safeReport = useMemo(() => {
-    // 1. Unwrap array if provided
-    const base = Array.isArray(report) ? (report[0] || {}) : (report || {});
+    // Basic unwrapping already happened in App.tsx, but we double-check common n8n field names
+    const base = report || {};
     
-    // 2. Ensure everything exists with defaults
     return {
-      score: Number(base?.overallScore ?? 0),
-      summary: String(base?.summary ?? "Audit analysis is complete."),
+      score: Number(base?.overallScore ?? base?.overall_score ?? base?.score ?? 0),
+      summary: String(base?.summary ?? base?.analysis ?? "Audit analysis is complete."),
       findings: Array.isArray(base?.findings) ? base.findings : [],
-      device: base?.deviceInfo || { hostname: 'N/A', firmware: 'N/A', uptime: 'N/A' }
+      device: base?.deviceInfo || base?.device_info || { hostname: 'N/A', firmware: 'N/A', uptime: 'N/A' }
     };
   }, [report]);
 
-  // Calculate chart data using the safe findings array
   const riskLevels = ['Critical', 'High', 'Medium', 'Low'];
   const riskData = useMemo(() => {
     return riskLevels.map(level => {
-      const count = safeReport.findings.filter((f: any) => 
-        String(f?.risk || '').toLowerCase() === level.toLowerCase()
-      ).length;
+      const count = safeReport.findings.filter((f: any) => {
+        const r = String(f?.risk || f?.riskLevel || f?.severity || '').toLowerCase();
+        return r === level.toLowerCase();
+      }).length;
       
-      let color = '#94a3b8'; // default
+      let color = '#94a3b8';
       if (level === 'Critical') color = '#dc2626';
       else if (level === 'High') color = '#f97316';
       else if (level === 'Medium') color = '#fbbf24';
@@ -204,24 +202,19 @@ const AuditReport: React.FC<AuditReportProps> = ({ report }) => {
              <h3 className="font-black text-blue-400 text-[10px] uppercase tracking-widest">Target Environment</h3>
              <div className="space-y-4 text-xs">
                 <div className="flex justify-between border-b border-white/5 pb-2">
-                  <span className="text-slate-400 font-medium">Device Name</span>
-                  <span className="font-mono text-blue-100 font-bold">{safeReport.device.hostname}</span>
+                  <span className="text-slate-400 font-medium">Hostname</span>
+                  <span className="font-mono text-blue-100 font-bold">{safeReport.device.hostname || safeReport.device.name}</span>
                 </div>
                 <div className="flex justify-between border-b border-white/5 pb-2">
                   <span className="text-slate-400 font-medium">OS Version</span>
-                  <span className="text-blue-100 font-bold">{safeReport.device.firmware}</span>
+                  <span className="text-blue-100 font-bold">{safeReport.device.firmware || safeReport.device.version}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400 font-medium">System Uptime</span>
+                  <span className="text-slate-400 font-medium">Uptime</span>
                   <span className="text-blue-100 font-bold">{safeReport.device.uptime}</span>
                 </div>
              </div>
           </div>
-
-          <button className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black shadow-xl shadow-blue-200 hover:bg-blue-700 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center space-x-3 text-sm">
-            <span>Export PDF Audit</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
         </div>
       </div>
     </div>
