@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Shield, RefreshCw, Download, Activity, Server, Key, ShieldCheck, Database } from 'lucide-react';
 
-const CONFIG_API = "/api/config";
+const CONFIG_API = "https://10.1.240.2/webhook/getconfig";
 
 interface SavedConfig {
   id: string;
@@ -73,12 +73,12 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onRuleSelect }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ipAddress, apiKey, action: 'get_config' })
       });
-      if (!response.ok) throw new Error(`Backend Status: ${response.status}`);
+      if (!response.ok) throw new Error(`Agent Status: ${response.status}`);
       const data = await response.json();
       const result = Array.isArray(data) ? data[0] : data;
       processNewConfig(result.hostname || ipAddress, ipAddress, result.firewallConfig || JSON.stringify(result));
     } catch (err: any) {
-      setExtractError(err.message || "Failed to reach backend API");
+      setExtractError(err.message || "Failed to reach n8n agent");
     } finally {
       setIsExtracting(false);
     }
@@ -135,7 +135,7 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onRuleSelect }) => {
             <h2 className="text-lg font-black text-slate-900 tracking-widest uppercase">Inventory</h2>
             <p className="text-xs text-slate-400 font-medium flex items-center space-x-1">
               <ShieldCheck className="w-3 h-3" />
-              <span>Proxying via 10.1.244.70</span>
+              <span>Direct Agent: 10.1.240.2</span>
             </p>
           </div>
         </div>
@@ -211,7 +211,7 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onRuleSelect }) => {
             <div className="flex-1 flex flex-col items-center justify-center p-12 text-center opacity-30">
               <Database className="w-20 h-20 mb-4" />
               <h3 className="text-xl font-bold uppercase tracking-widest">Snapshot Required</h3>
-              <p className="text-sm">Fetch a snapshot to explore rules via backend proxy.</p>
+              <p className="text-sm">Fetch a snapshot to explore rules directly from n8n.</p>
             </div>
           )}
         </div>

@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Activity, RefreshCw, Monitor, Server, Key, Filter, XCircle, ShieldCheck } from 'lucide-react';
 import { AuditConfig } from '../types';
 
-const LOGS_API = "/api/logs";
+const LOGS_API = "https://10.1.240.2/webhook/logs";
 
 interface ConfigLog {
   time: string;
@@ -68,7 +68,7 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
 
       setLogs(parsedLogs);
     } catch (err: any) {
-      setError(err.message || "Failed to fetch telemetry from backend API");
+      setError(err.message || "Failed to fetch telemetry from n8n agent");
     } finally {
       setIsFetching(false);
     }
@@ -98,7 +98,7 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
               </div>
               <p className="text-xs text-slate-400 font-medium tracking-widest uppercase flex items-center space-x-1">
                 <ShieldCheck className="w-3 h-3" />
-                <span>Source: 10.1.244.70 Proxy</span>
+                <span>Direct Agent: 10.1.240.2</span>
               </p>
             </div>
           </div>
