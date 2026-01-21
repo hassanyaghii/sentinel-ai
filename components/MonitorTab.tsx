@@ -100,7 +100,7 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
               </div>
               <p className="text-xs text-slate-400 font-medium tracking-widest uppercase flex items-center space-x-1">
                 <Zap className="w-3 h-3 text-amber-500" />
-                <span>Orchestration flow: Agent -> n8n -> MySQL</span>
+                <span>Orchestration flow: Agent &rarr; n8n &rarr; MySQL</span>
               </p>
             </div>
           </div>
