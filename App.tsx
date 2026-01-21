@@ -80,30 +80,35 @@ const App: React.FC = () => {
         throw new Error(errData.error || `Server Error: ${response.statusText}`);
       }
       
-      const data = await response.json();
-      console.log("Response from n8n proxy (Raw):", data);
+      const rawData = await response.json();
+      console.log("Response from n8n (Raw):", rawData);
 
-      // UNWRAP n8n Array if needed (Your JSON shows it's inside an array)
-      const n8nResult = Array.isArray(data) ? data[0] : data;
+      // 1. UNWRAP: n8n returns [{...}], extract the first object
+      const n8nData = Array.isArray(rawData) ? rawData[0] : rawData;
 
-      if (!n8nResult) {
+      if (!n8nData) {
         throw new Error("n8n returned an empty response.");
       }
 
-      // NORMALIZE FIELD NAMES
-      // n8n uses camelCase (overallScore), DB uses snake_case (overall_score)
-      const formattedReport = {
-        ...n8nResult,
-        overall_score: n8nResult.overallScore !== undefined ? n8nResult.overallScore : n8nResult.overall_score,
-        findings: n8nResult.findings || []
+      // 2. NORMALIZE: Ensure fields match what AuditReport.tsx expects (overall_score, findings, etc.)
+      const normalizedReport = {
+        ...n8nData,
+        // Map n8n 'overallScore' to 'overall_score'
+        overall_score: n8nData.overallScore !== undefined ? n8nData.overallScore : (n8nData.overall_score || 0),
+        // Ensure findings is an array
+        findings: Array.isArray(n8nData.findings) ? n8nData.findings : [],
+        // Ensure summary exists
+        summary: n8nData.summary || n8nData.analysis || "Audit analysis complete.",
+        // Device info
+        device_info: n8nData.deviceInfo || n8nData.device_info || { hostname: 'Unknown', firmware: 'Unknown', uptime: 'N/A' }
       };
 
-      console.log("Formatted Report for UI:", formattedReport);
+      console.log("Normalized for UI:", normalizedReport);
 
-      // Set immediately to UI so user sees results
-      setReport(formattedReport);
+      // 3. DISPLAY: Update state with normalized data
+      setReport(normalizedReport);
 
-      // Re-fetch archive in background so the Archive tab is up to date
+      // Refresh archive in background
       fetchArchive();
 
     } catch (err: any) {
