@@ -192,7 +192,7 @@ app.listen(port, "0.0.0.0", () => {
   🛡️ Sentinel Proxy Server
   ------------------------
   Port: ${port}
-  n8n: https://10.1.240.2 (SSL Bypassed)
+  n8n: https://n8n.bmbgroup.com (SSL Bypassed)
   MySQL: ${dbConfig.database}
   ------------------------
   `);
