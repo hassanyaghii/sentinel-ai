@@ -40,18 +40,19 @@ const App: React.FC = () => {
 
   const loadArchiveDetail = async (id: number) => {
     try {
-      setReport(null);
-      setError(null);
+      // Don't clear report here so we don't have flickering if we are just refreshing
       const response = await fetch(`${API_BASE}/reports/${id}`);
       if (response.ok) {
         const data = await response.json();
+        console.log("Loaded Report Detail:", data);
         setReport(data);
-        setActiveTab('audit');
+        return data;
       }
     } catch (err) {
       console.error("Detail fetch error:", err);
-      setError("Failed to load archived report detail.");
+      setError("Failed to load report details from database.");
     }
+    return null;
   };
 
   const handleJumpToLogs = (path: string) => {
@@ -82,23 +83,25 @@ const App: React.FC = () => {
       }
       
       const data = await response.json();
-      console.log("Response from n8n proxy:", data);
+      console.log("Response from n8n proxy (Control Signal):", data);
 
-      // Scenario A: n8n returns the report object directly
-      if (data && (data.findings || data.overallScore)) {
-        setReport(data);
-      } 
-      // Scenario B: n8n saved to DB and returned success. We need to fetch the latest.
-      else {
-        console.log("Audit confirmed by n8n. Fetching latest result from DB...");
-        // Wait 1.5 seconds for MySQL to commit the transaction from n8n
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        const latestReports = await fetchArchive();
-        if (latestReports && latestReports.length > 0) {
-          await loadArchiveDetail(latestReports[0].id);
-        } else {
-          throw new Error("n8n reported success but no report was found in database.");
+      // Even if data is returned, we prefer the source of truth in the DB
+      // Wait for n8n to finish its DB write operation
+      console.log("Waiting for database commit...");
+      await new Promise(resolve => setTimeout(resolve, 2500));
+      
+      const latestReports = await fetchArchive();
+      if (latestReports && latestReports.length > 0) {
+        // Fetch the detailed findings for the top-most (newest) record
+        const fullReport = await loadArchiveDetail(latestReports[0].id);
+        if (!fullReport || !fullReport.findings || fullReport.findings.length === 0) {
+           console.warn("Report found but findings are empty. n8n may still be writing.");
+           // Optional: One more retry
+           await new Promise(resolve => setTimeout(resolve, 2000));
+           await loadArchiveDetail(latestReports[0].id);
         }
+      } else {
+        throw new Error("Audit finished but no record found in Archive. Check n8n logs.");
       }
     } catch (err: any) {
       console.error("Audit Request Failed:", err);
@@ -144,12 +147,17 @@ const App: React.FC = () => {
             </div>
             <div className="lg:col-span-2">
               {isAuditing ? (
-                <div className="bg-white rounded-2xl p-12 flex flex-col items-center justify-center min-h-[500px] border border-slate-200 shadow-sm">
-                  <div className="w-16 h-16 border-4 border-blue-50 border-t-blue-600 rounded-full animate-spin"></div>
-                  <h3 className="mt-8 text-lg font-black text-slate-900 uppercase tracking-widest text-center">n8n Orchestration in Progress</h3>
-                  <p className="text-xs text-slate-400 mt-2 font-bold uppercase tracking-widest text-center">
-                    Fetching Config &rarr; Triggering AI Agent &rarr; Finalizing DB Records
-                  </p>
+                <div className="bg-white rounded-2xl p-12 flex flex-col items-center justify-center min-h-[500px] border border-slate-200 shadow-sm text-center">
+                  <div className="w-16 h-16 border-4 border-blue-50 border-t-blue-600 rounded-full animate-spin mb-8"></div>
+                  <h3 className="text-lg font-black text-slate-900 uppercase tracking-widest">Orchestrating AI Audit</h3>
+                  <div className="mt-4 space-y-2">
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center justify-center gap-2">
+                      <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span> Analyzing Rulesets via n8n
+                    </p>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center justify-center gap-2">
+                      <span className="w-2 h-2 bg-slate-200 rounded-full"></span> Persisting to MySQL
+                    </p>
+                  </div>
                 </div>
               ) : report ? (
                 <AuditReport report={report} />
@@ -176,10 +184,10 @@ const App: React.FC = () => {
               {dbReports.length > 0 ? (
                 <div className="space-y-3">
                   {dbReports.map((r) => (
-                    <div key={r.id} onClick={() => loadArchiveDetail(r.id)} className="p-4 border border-slate-100 rounded-xl hover:border-blue-400 hover:bg-blue-50/20 transition-all flex items-center justify-between cursor-pointer group">
+                    <div key={r.id} onClick={() => loadArchiveDetail(r.id).then(() => setActiveTab('audit'))} className="p-4 border border-slate-100 rounded-xl hover:border-blue-400 hover:bg-blue-50/20 transition-all flex items-center justify-between cursor-pointer group">
                       <div className="flex items-center gap-4">
                         <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold text-white shadow-sm ${r.overall_score > 60 ? 'bg-green-500' : r.overall_score > 40 ? 'bg-orange-500' : 'bg-red-500'}`}>
-                          {r.overall_score}
+                          {r.overall_score || 0}
                         </div>
                         <div>
                           <h4 className="font-bold text-slate-800 text-sm">{r.hostname || 'Device'} ({r.ip_address})</h4>
