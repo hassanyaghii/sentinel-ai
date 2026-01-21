@@ -3,7 +3,6 @@ require("dotenv").config();
 const express = require("express");
 const mysql = require("mysql2/promise");
 const cors = require("cors");
-const https = require("https");
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -42,7 +41,6 @@ initDB();
 
 /**
  * 1. AI AUDIT PROXY
- * Explicitly using POST to support request body
  */
 app.post("/api/audit", async (req, res) => {
   console.log("🚀 Proxying Audit request to n8n...");
@@ -52,23 +50,15 @@ app.post("/api/audit", async (req, res) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req.body)
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`n8n error (${response.status}): ${errorText}`);
-    }
-    
     const data = await response.json();
     res.json(data);
   } catch (err) {
-    console.error("Audit Proxy Error:", err);
-    res.status(500).json({ error: "Failed to reach n8n Audit Webhook: " + err.message });
+    res.status(500).json({ error: "Failed to reach n8n Audit Webhook" });
   }
 });
 
 /**
  * 2. CONFIG FETCH PROXY
- * Explicitly using POST to support request body
  */
 app.post("/api/config", async (req, res) => {
   console.log("🚀 Proxying Config Fetch to n8n...");
@@ -78,87 +68,34 @@ app.post("/api/config", async (req, res) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req.body)
     });
-    
-    if (!response.ok) throw new Error(`n8n config error: ${response.statusText}`);
-    
     const data = await response.json();
     res.json(data);
   } catch (err) {
-    console.error("Config Proxy Error:", err);
-    res.status(500).json({ error: "Failed to reach n8n Config Webhook: " + err.message });
+    res.status(500).json({ error: "Failed to reach n8n Config Webhook" });
   }
 });
 
 /**
- * 3. LOG SYNC & DATABASE PERSISTENCE
- * Explicitly using POST to support request body
+ * 3. SNAPSHOT READ ACCESS - The table you showed in the screenshot
  */
-app.post("/api/logs", async (req, res) => {
-  console.log("🚀 Triggering n8n Telemetry Sync...");
+app.get("/api/config-snapshots", async (req, res) => {
   try {
-    const n8nResponse = await fetch(N8N_LOGS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        ipAddress: req.body.ipAddress, 
-        apiKey: req.body.apiKey,
-        action: 'sync_telemetry' 
-      })
-    });
-
-    if (!n8nResponse.ok) {
-      const errorText = await n8nResponse.text();
-      throw new Error(`n8n log fetch failed: ${errorText}`);
-    }
-    
-    const logs = await n8nResponse.json();
-    const logArray = Array.isArray(logs) ? logs : (logs.data && Array.isArray(logs.data)) ? logs.data : [logs];
-
-    if (logArray.length > 0 && pool) {
-      console.log(`📥 Received ${logArray.length} records. Updating MySQL...`);
-      
-      const insertQuery = `
-        INSERT INTO firewall_logs 
-        (ip_address, receive_time, admin_user, client_type, command, result, config_path, before_change, after_change, sequence_no)
-        VALUES ?
-        ON DUPLICATE KEY UPDATE 
-          receive_time=VALUES(receive_time),
-          admin_user=VALUES(admin_user),
-          result=VALUES(result)
-      `;
-
-      const values = logArray.map(log => [
-        req.body.ipAddress || log.ip_address || 'unknown',
-        log.receive_time || new Date().toISOString().slice(0, 19).replace('T', ' '),
-        log.admin_user || 'unknown',
-        log.client_type || 'web',
-        log.command || 'edit',
-        log.result || 'succeeded',
-        log.config_path || log.path || '',
-        log.before_change || '',
-        log.after_change || '',
-        log.sequence_no || log.id || `gen-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-      ]);
-
-      await pool.query(insertQuery, [values]);
-    }
-
-    res.json({ success: true, count: logArray.length });
+    const [rows] = await pool.execute("SELECT * FROM config_snapshots ORDER BY created_at DESC LIMIT 100");
+    res.json(rows);
   } catch (err) {
-    console.error("Log Sync Error:", err);
-    res.status(500).json({ error: "Failed to sync telemetry: " + err.message });
+    res.status(500).json({ error: "DB Read Error (config_snapshots): " + err.message });
   }
 });
 
 /**
- * READ ACCESS - Pull from MySQL
+ * 4. LOG READ ACCESS
  */
 app.get("/api/logs", async (req, res) => {
   try {
     const [rows] = await pool.execute("SELECT * FROM firewall_logs ORDER BY receive_time DESC LIMIT 500");
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: "DB Read Error: " + err.message });
+    res.status(500).json({ error: "DB Read Error (firewall_logs): " + err.message });
   }
 });
 
@@ -167,7 +104,7 @@ app.get("/api/reports", async (req, res) => {
     const [rows] = await pool.execute("SELECT * FROM audit_reports ORDER BY created_at DESC");
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: "DB Read Error: " + err.message });
+    res.status(500).json({ error: "DB Read Error (audit_reports): " + err.message });
   }
 });
 
@@ -185,12 +122,5 @@ app.get("/api/reports/:id", async (req, res) => {
 });
 
 app.listen(port, "0.0.0.0", () => {
-  console.log(`
-  🛡️ Sentinel Proxy Server
-  ------------------------
-  Port: ${port}
-  n8n Target: 10.1.240.2
-  SSL Security: Disabled for Internal Proxy
-  ------------------------
-  `);
+  console.log(`🛡️ Sentinel Proxy Server active on port ${port}`);
 });
