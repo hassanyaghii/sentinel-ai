@@ -49,7 +49,7 @@ app.post("/api/audit", async (req, res) => {
   console.log("🚀 Proxying LIVE Audit request to n8n (bypassing SSL check)...");
   try {
     const response = await fetch(N8N_AUDIT_URL, {
-      method: 'POST',
+      method: 'GET',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req.body),
       dispatcher: agent // In Node 18+, fetch uses undici. We can also use process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0' as a fallback.
@@ -76,7 +76,7 @@ app.post("/api/config", async (req, res) => {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
   try {
     const response = await fetch(N8N_CONFIG_URL, {
-      method: 'POST',
+      method: 'GET',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req.body)
     });
@@ -97,7 +97,7 @@ app.post("/api/logs", async (req, res) => {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
   try {
     const n8nResponse = await fetch(N8N_LOGS_URL, {
-      method: 'POST',
+      method: 'GET',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         ipAddress: req.body.ipAddress, 
