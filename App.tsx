@@ -7,7 +7,6 @@ import ConfigExplorer from './components/ConfigExplorer';
 import MonitorTab from './components/MonitorTab';
 import { AuditConfig } from './types';
 
-// Points to the server.js proxy
 const API_BASE = "/api";
 
 const App: React.FC = () => {
@@ -31,15 +30,16 @@ const App: React.FC = () => {
       if (response.ok) {
         const data = await response.json();
         setDbReports(data);
+        return data;
       }
     } catch (err) {
       console.error("Archive fetch error:", err);
     }
+    return [];
   };
 
   const loadArchiveDetail = async (id: number) => {
     try {
-      // Clear current report first to ensure we aren't showing stale UI
       setReport(null);
       setError(null);
       const response = await fetch(`${API_BASE}/reports/${id}`);
@@ -64,7 +64,6 @@ const App: React.FC = () => {
   }, [activeTab]);
 
   const handleRunAudit = async (auditConfig: AuditConfig) => {
-    // CRITICAL: Clear previous report and errors to ensure we trigger a FRESH audit
     setReport(null);
     setError(null);
     setIsAuditing(true);
@@ -83,13 +82,23 @@ const App: React.FC = () => {
       }
       
       const data = await response.json();
-      
-      // If n8n returns the object, we display it immediately
-      if (data) {
-        console.log("Audit complete. Data received from n8n:", data);
+      console.log("Response from n8n proxy:", data);
+
+      // Scenario A: n8n returns the report object directly
+      if (data && (data.findings || data.overallScore)) {
         setReport(data);
-      } else {
-        throw new Error("n8n returned an empty response.");
+      } 
+      // Scenario B: n8n saved to DB and returned success. We need to fetch the latest.
+      else {
+        console.log("Audit confirmed by n8n. Fetching latest result from DB...");
+        // Wait 1.5 seconds for MySQL to commit the transaction from n8n
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        const latestReports = await fetchArchive();
+        if (latestReports && latestReports.length > 0) {
+          await loadArchiveDetail(latestReports[0].id);
+        } else {
+          throw new Error("n8n reported success but no report was found in database.");
+        }
       }
     } catch (err: any) {
       console.error("Audit Request Failed:", err);
@@ -139,7 +148,7 @@ const App: React.FC = () => {
                   <div className="w-16 h-16 border-4 border-blue-50 border-t-blue-600 rounded-full animate-spin"></div>
                   <h3 className="mt-8 text-lg font-black text-slate-900 uppercase tracking-widest text-center">n8n Orchestration in Progress</h3>
                   <p className="text-xs text-slate-400 mt-2 font-bold uppercase tracking-widest text-center">
-                    Fetching Config &rarr; Triggering AI Agent &rarr; Parsing Analysis
+                    Fetching Config &rarr; Triggering AI Agent &rarr; Finalizing DB Records
                   </p>
                 </div>
               ) : report ? (
