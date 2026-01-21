@@ -43,6 +43,7 @@ const App: React.FC = () => {
       const response = await fetch(`${API_BASE}/reports/${id}`);
       if (response.ok) {
         const data = await response.json();
+        // Archive data is already in snake_case (overall_score, risk_level)
         setReport(data);
         setActiveTab('audit');
         return data;
@@ -64,7 +65,6 @@ const App: React.FC = () => {
   }, [activeTab]);
 
   const handleRunAudit = async (auditConfig: AuditConfig) => {
-    // Reset state before starting
     setReport(null);
     setError(null);
     setIsAuditing(true);
@@ -82,40 +82,36 @@ const App: React.FC = () => {
       }
       
       const rawData = await response.json();
-      console.log("Raw n8n Response:", rawData);
+      console.log("Raw response from n8n:", rawData);
       
-      // 1. Defensively unwrap n8n array structure
+      // 1. UNWRAP: handle [ { ... } ]
       let n8nData = Array.isArray(rawData) ? rawData[0] : rawData;
-      
-      // If n8n wrapped it in another property like 'data' or 'body'
-      if (n8nData && !n8nData.overallScore && !n8nData.overall_score) {
-        if (n8nData.data) n8nData = n8nData.data;
-        else if (n8nData.body) n8nData = n8nData.body;
-      }
 
-      if (!n8nData) {
-        throw new Error("n8n returned an empty or invalid response.");
-      }
+      if (!n8nData) throw new Error("Empty response from n8n agent.");
 
-      // 2. Normalize fields for the UI (Map camelCase to snake_case used by DB/UI)
-      const normalized = {
+      // 2. DEEP NORMALIZATION: Align n8n keys with MySQL keys (which the UI expects)
+      const normalizedFindings = (Array.isArray(n8nData.findings) ? n8nData.findings : []).map((f: any) => ({
+        ...f,
+        // Map n8n 'risk' or 'riskLevel' to 'risk_level' (your DB column)
+        risk_level: f.risk_level || f.risk || f.riskLevel || 'Medium'
+      }));
+
+      const normalizedReport = {
         ...n8nData,
-        overall_score: n8nData.overallScore !== undefined ? n8nData.overallScore : (n8nData.overall_score || 0),
-        summary: n8nData.summary || n8nData.analysis || "Analysis complete.",
-        findings: Array.isArray(n8nData.findings) ? n8nData.findings : [],
-        hostname: n8nData.hostname || auditConfig.ipAddress,
-        device_info: n8nData.deviceInfo || n8nData.device_info || { 
-          hostname: n8nData.hostname || 'Unknown', 
-          firmware: n8nData.firmware || n8nData.device_firmware || 'Unknown' 
-        }
+        // Map n8n 'overallScore' to 'overall_score' (your DB column)
+        overall_score: n8nData.overall_score !== undefined ? n8nData.overall_score : (n8nData.overallScore || 0),
+        summary: n8nData.summary || n8nData.analysis || "Audit analysis complete.",
+        findings: normalizedFindings,
+        hostname: n8nData.hostname || n8nData.device_info?.hostname || auditConfig.ipAddress,
+        device_firmware: n8nData.device_firmware || n8nData.device_info?.firmware || 'Unknown'
       };
 
-      console.log("Final Normalized Report:", normalized);
+      console.log("Normalized Live Report for UI:", normalizedReport);
 
-      // 3. Set the report state to the normalized object
-      setReport(normalized);
+      // 3. SET STATE
+      setReport(normalizedReport);
 
-      // Refresh archive in background
+      // Refresh archive background
       fetchArchive();
 
     } catch (err: any) {
