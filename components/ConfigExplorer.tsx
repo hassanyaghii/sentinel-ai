@@ -17,6 +17,8 @@ interface InteractiveRule {
   action: string;
   from: string;
   to: string;
+  source: string;
+  dest: string;
   path: string;
 }
 
@@ -45,7 +47,7 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs }) => {
   const handleRunExtraction = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ipAddress || !apiKey) {
-      setExtractError("IP and API Key are required for extraction.");
+      setExtractError("IP and API Key are required.");
       return;
     }
 
@@ -89,36 +91,53 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs }) => {
   const selected = configs.find(c => c.id === selectedId);
 
   const parsedRules = useMemo(() => {
-    if (!selected || !selected.raw || !selected.raw.includes('<rules>')) return [];
+    if (!selected || !selected.raw) return [];
     try {
-      const rules: InteractiveRule[] = [];
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(selected.raw, "text/xml");
-      const entries = xmlDoc.getElementsByTagName("entry");
+      
+      // Navigate to the security rules: response -> result -> entry -> rulebase -> security -> rules
+      const ruleEntries = xmlDoc.querySelectorAll("rulebase > security > rules > entry");
+      
+      const rules: InteractiveRule[] = [];
+      
+      ruleEntries.forEach((entry) => {
+        const name = entry.getAttribute("name") || "Unnamed Rule";
+        
+        // Helper to get members from tags like <from>, <to>, <source>, etc.
+        const getMembers = (tagName: string) => {
+          const tag = entry.querySelector(tagName);
+          if (!tag) return "any";
+          const members = Array.from(tag.querySelectorAll("member")).map(m => m.textContent);
+          return members.length > 0 ? members.join(", ") : "any";
+        };
 
-      for (let i = 0; i < entries.length; i++) {
-        const entry = entries[i];
-        const name = entry.getAttribute("name");
-        if (!name) continue;
+        const action = entry.querySelector("action")?.textContent || "allow";
+        const from = getMembers("from");
+        const to = getMembers("to");
+        const source = getMembers("source");
+        const dest = getMembers("destination");
 
-        const parent = entry.parentElement;
-        if (parent && parent.tagName === "rules") {
-          const action = entry.getElementsByTagName("action")[0]?.textContent || "allow";
-          const from = entry.getElementsByTagName("from")[0]?.getElementsByTagName("member")[0]?.textContent || "any";
-          const to = entry.getElementsByTagName("to")[0]?.getElementsByTagName("member")[0]?.textContent || "any";
-          
-          rules.push({ name, action, from, to, path: name });
-        }
-      }
+        rules.push({
+          name,
+          action,
+          from: `${from} (${source})`,
+          to: `${to} (${dest})`,
+          source,
+          dest,
+          path: name
+        });
+      });
+
       return rules;
     } catch (e) {
+      console.error("XML Parsing error:", e);
       return [];
     }
   }, [selected]);
 
   return (
     <div className="flex flex-col h-[85vh] space-y-4 relative">
-      {/* HEADER SECTION */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <div className="p-2.5 bg-slate-900 rounded-xl text-white shadow-lg"><Shield className="w-5 h-5" /></div>
@@ -142,7 +161,6 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs }) => {
       </div>
 
       <div className="flex-1 flex overflow-hidden gap-6">
-        {/* SIDEBAR: Snapshot List & Extraction Form */}
         <div className="w-72 flex flex-col space-y-4 shrink-0">
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
             <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Live XML Pull</h3>
@@ -196,11 +214,10 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs }) => {
           </div>
         </div>
 
-        {/* MAIN PANEL: Full-width Policy List */}
         <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
           <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
              <div className="flex items-center space-x-2">
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Interactive Policy Rules</span>
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Security Policies</span>
                 {selected && <span className="text-[9px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded font-mono font-bold uppercase">{selected.ip}</span>}
              </div>
              <List className="w-4 h-4 text-slate-300" />
@@ -209,20 +226,26 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs }) => {
              {isExtracting ? (
                 <div className="h-full flex flex-col items-center justify-center space-y-4">
                    <div className="w-10 h-10 border-4 border-slate-100 border-t-blue-600 rounded-full animate-spin"></div>
-                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Parsing incoming configuration...</p>
+                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Parsing configuration...</p>
                 </div>
              ) : parsedRules.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                   {parsedRules.map((rule, idx) => (
                     <div key={idx} className="p-4 bg-white border border-slate-100 rounded-xl hover:border-blue-300 hover:shadow-md transition-all group relative">
                         <div className="flex justify-between items-start mb-2">
-                          <h5 className="font-black text-slate-800 text-xs truncate pr-4 uppercase">{rule.name}</h5>
+                          <h5 className="font-black text-slate-800 text-[11px] truncate pr-4 uppercase" title={rule.name}>{rule.name}</h5>
                           <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${rule.action === 'allow' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{rule.action}</span>
                         </div>
-                        <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase mb-4">
-                          <span className="bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">{rule.from}</span>
-                          <ArrowRight className="w-3 h-3 text-slate-300" />
-                          <span className="bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">{rule.to}</span>
+                        <div className="space-y-2 mb-4">
+                          <div className="flex items-center gap-2 text-[9px] text-slate-400 font-bold uppercase">
+                            <span className="bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100 truncate flex-1" title={rule.from}>FROM: {rule.from}</span>
+                          </div>
+                          <div className="flex items-center justify-center">
+                             <ArrowRight className="w-3 h-3 text-slate-200" />
+                          </div>
+                          <div className="flex items-center gap-2 text-[9px] text-slate-400 font-bold uppercase">
+                            <span className="bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100 truncate flex-1" title={rule.to}>TO: {rule.to}</span>
+                          </div>
                         </div>
                         <button 
                           onClick={() => onJumpToLogs?.(rule.name)}
@@ -238,7 +261,7 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs }) => {
                 <div className="h-full flex flex-col items-center justify-center opacity-20">
                   <List className="w-12 h-12 mb-2" />
                   <p className="text-[10px] font-black uppercase tracking-tighter">
-                    {selected ? "No structured rules detected in XML" : "Select a snapshot to begin"}
+                    {selected ? "No rules found (Check XML format)" : "Select a snapshot to begin"}
                   </p>
                 </div>
              )}
@@ -246,32 +269,25 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs }) => {
         </div>
       </div>
 
-      {/* MODAL: Code View Overlay */}
       {showSourceModal && selected && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 md:p-12">
           <div className="bg-slate-900 w-full max-w-5xl h-full max-h-[80vh] rounded-3xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
             <div className="p-4 border-b border-white/5 flex justify-between items-center bg-black/20">
               <div className="flex items-center space-x-3">
                 <Code className="w-4 h-4 text-blue-400" />
-                <span className="text-xs font-black text-white uppercase tracking-widest">Configuration Source: {selected.hostname}</span>
+                <span className="text-xs font-black text-white uppercase tracking-widest">Source XML: {selected.hostname}</span>
               </div>
-              <button 
-                onClick={() => setShowSourceModal(false)}
-                className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-all"
-              >
+              <button onClick={() => setShowSourceModal(false)} className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-all">
                 <X className="w-5 h-5" />
               </button>
             </div>
             <div className="flex-1 overflow-auto p-8 custom-scrollbar">
-              <pre className="text-[11px] font-mono text-blue-100/70 whitespace-pre-wrap leading-relaxed selection:bg-blue-500/30">
+              <pre className="text-[11px] font-mono text-blue-100/70 whitespace-pre-wrap leading-relaxed">
                 {selected.raw}
               </pre>
             </div>
             <div className="p-4 bg-black/20 border-t border-white/5 flex justify-end">
-              <button 
-                onClick={() => setShowSourceModal(false)}
-                className="px-6 py-2 bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-lg hover:bg-blue-500 transition-all"
-              >
+              <button onClick={() => setShowSourceModal(false)} className="px-6 py-2 bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl shadow-lg hover:bg-blue-500 transition-all">
                 Done
               </button>
             </div>
