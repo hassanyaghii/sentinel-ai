@@ -25,15 +25,6 @@ CREATE TABLE IF NOT EXISTS security_findings (
     FOREIGN KEY (report_id) REFERENCES audit_reports(id) ON DELETE CASCADE
 );
 
--- Store raw XML configuration snapshots for auditing history
-CREATE TABLE IF NOT EXISTS config_snapshots (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    ip_address VARCHAR(45),
-    hostname VARCHAR(255),
-    raw_xml LONGTEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
 -- Store Firewall Configuration Logs (Telemetry)
 CREATE TABLE IF NOT EXISTS firewall_logs (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -46,6 +37,6 @@ CREATE TABLE IF NOT EXISTS firewall_logs (
     config_path TEXT,
     before_change TEXT,
     after_change TEXT,
-    sequence_no VARCHAR(100),
+    sequence_no VARCHAR(100) UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

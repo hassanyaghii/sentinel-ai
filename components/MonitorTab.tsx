@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Activity, RefreshCw, Filter, XCircle, ShieldCheck, Database, Clock, Zap } from 'lucide-react';
+import { Activity, RefreshCw, Filter, XCircle, Clock, Zap } from 'lucide-react';
 import { AuditConfig } from '../types';
 
 const LOGS_API = "/api/logs";
@@ -49,13 +49,12 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
   }, [initialFilter]);
 
   const handleFetchLogs = async () => {
-    // Clear old state to show the user we are doing a FRESH sync via n8n
     setIsFetching(true);
     setError(null);
-    setLogs([]); // Optional: Clear existing list to prevent seeing "old" data during fetch
     
     try {
-      console.log("Triggering n8n Telemetry Sync via Backend Proxy...");
+      console.log("Triggering n8n Telemetry Sync via Backend...");
+      // 1. Tell backend to trigger n8n and save to DB
       const response = await fetch(LOGS_API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -70,8 +69,8 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
         throw new Error(errData.error || "n8n Orchestration for logs failed");
       }
       
-      console.log("n8n Sync Complete. Refreshing UI from MySQL...");
-      // After n8n finishes (and inserts into MySQL), we refresh our view
+      console.log("n8n Sync Successful. Re-fetching from database...");
+      // 2. Fetch the newly saved logs from MySQL
       await fetchLogsFromDB();
     } catch (err: any) {
       console.error("Telemetry Sync Error:", err);
@@ -110,14 +109,14 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
               </div>
               <p className="text-xs text-slate-400 font-medium tracking-widest uppercase flex items-center space-x-1">
                 <Zap className="w-3 h-3 text-amber-500" />
-                <span>Orchestration flow: Agent &rarr; n8n &rarr; MySQL</span>
+                <span>Sync Flow: Agent → n8n → MySQL Database</span>
               </p>
             </div>
           </div>
           <button 
             onClick={handleFetchLogs} 
             disabled={isFetching} 
-            className="px-8 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest bg-slate-900 text-white hover:bg-black shadow-lg flex items-center space-x-3 transition-all active:scale-95"
+            className="px-8 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest bg-slate-900 text-white hover:bg-black shadow-lg flex items-center space-x-3 transition-all active:scale-95 disabled:opacity-50"
           >
             {isFetching ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             <span>{isFetching ? 'Syncing n8n...' : 'Trigger n8n Sync'}</span>
