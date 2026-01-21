@@ -24,12 +24,20 @@ const App: React.FC = () => {
     webhookUrl: ''
   });
 
-  const fetchArchive = async () => {
+  // Fetch the archive list and optionally load the latest one as the default view
+  const fetchArchive = async (loadLatest = false) => {
     try {
       const response = await fetch(`${API_BASE}/reports`);
       if (response.ok) {
         const data = await response.json();
         setDbReports(data);
+        
+        // If requested (e.g. on app startup), load the most recent report into the view
+        if (loadLatest && data.length > 0) {
+          // Assuming data is sorted by created_at DESC or ID DESC from backend
+          const latestId = data[0].id;
+          await loadArchiveDetail(latestId);
+        }
         return data;
       }
     } catch (err) {
@@ -60,14 +68,22 @@ const App: React.FC = () => {
     setActiveTab('monitor');
   };
 
+  // Initial Load: Fetch archive and show the latest audit immediately
+  useEffect(() => {
+    fetchArchive(true);
+  }, []);
+
+  // Refresh archive list when tab changes to archive
   useEffect(() => {
     if (activeTab === 'archive') fetchArchive();
   }, [activeTab]);
 
   const handleRunAudit = async (auditConfig: AuditConfig) => {
+    // Clear current view and show loading
     setReport(null);
     setError(null);
     setIsAuditing(true);
+    setActiveTab('audit');
     
     try {
       const response = await fetch(`${API_BASE}/audit`, {
@@ -82,23 +98,20 @@ const App: React.FC = () => {
       }
       
       const rawData = await response.json();
-      console.log("Raw response from n8n:", rawData);
       
-      // 1. UNWRAP: handle [ { ... } ]
+      // 1. UNWRAP: n8n usually returns an array [ { ... } ]
       let n8nData = Array.isArray(rawData) ? rawData[0] : rawData;
-
       if (!n8nData) throw new Error("Empty response from n8n agent.");
 
-      // 2. DEEP NORMALIZATION: Align n8n keys with MySQL keys (which the UI expects)
+      // 2. NORMALIZE: Convert n8n camelCase (overallScore) to UI/DB snake_case (overall_score)
+      // This ensures the findings list and score appear correctly in AuditReport.tsx
       const normalizedFindings = (Array.isArray(n8nData.findings) ? n8nData.findings : []).map((f: any) => ({
         ...f,
-        // Map n8n 'risk' or 'riskLevel' to 'risk_level' (your DB column)
         risk_level: f.risk_level || f.risk || f.riskLevel || 'Medium'
       }));
 
       const normalizedReport = {
         ...n8nData,
-        // Map n8n 'overallScore' to 'overall_score' (your DB column)
         overall_score: n8nData.overall_score !== undefined ? n8nData.overall_score : (n8nData.overallScore || 0),
         summary: n8nData.summary || n8nData.analysis || "Audit analysis complete.",
         findings: normalizedFindings,
@@ -106,12 +119,10 @@ const App: React.FC = () => {
         device_firmware: n8nData.device_firmware || n8nData.device_info?.firmware || 'Unknown'
       };
 
-      console.log("Normalized Live Report for UI:", normalizedReport);
-
-      // 3. SET STATE
+      // 3. UPDATE UI: Show the new audit results immediately
       setReport(normalizedReport);
 
-      // Refresh archive background
+      // 4. SYNC: Refresh the archive list in the background
       fetchArchive();
 
     } catch (err: any) {
@@ -127,12 +138,12 @@ const App: React.FC = () => {
       <nav className="bg-slate-900 text-white border-b border-slate-700 h-16 sticky top-0 z-50 shadow-xl">
         <div className="max-w-7xl mx-auto px-4 h-full flex items-center justify-between">
           <div className="flex items-center space-x-8">
-            <div className="flex items-center space-x-3 cursor-pointer" onClick={() => { setActiveTab('audit'); setReport(null); setError(null); }}>
+            <div className="flex items-center space-x-3 cursor-pointer" onClick={() => { setActiveTab('audit'); setReport(null); setError(null); fetchArchive(true); }}>
               <ShieldCheck className="w-8 h-8 text-blue-500" />
               <span className="text-xl font-bold tracking-tight">Sentinel <span className="text-blue-500 uppercase text-xs ml-1">PAN-OS</span></span>
             </div>
             <div className="flex space-x-1">
-              <button onClick={() => { setActiveTab('audit'); setReport(null); setError(null); }} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'audit' && !report ? 'bg-blue-600' : 'text-slate-400 hover:text-white'}`}>AI Audit</button>
+              <button onClick={() => { setActiveTab('audit'); setError(null); }} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'audit' ? 'bg-blue-600' : 'text-slate-400 hover:text-white'}`}>AI Audit</button>
               <button onClick={() => setActiveTab('archive')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'archive' ? 'bg-blue-600' : 'text-slate-400 hover:text-white'}`}>Archive</button>
               <button onClick={() => setActiveTab('monitor')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'monitor' ? 'bg-blue-600' : 'text-slate-400 hover:text-white'}`}>Telemetry</button>
               <button onClick={() => setActiveTab('explorer')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'explorer' ? 'bg-blue-600' : 'text-slate-400 hover:text-white'}`}>Explorer</button>
@@ -155,7 +166,19 @@ const App: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <div className="lg:col-span-1">
               <SetupForm onSubmit={handleRunAudit} isLoading={isAuditing} initialValues={config} onConfigChange={setConfig} />
+              
+              {/* Quick info if showing a stored report */}
+              {report && !isAuditing && report.id && (
+                <div className="mt-6 p-4 bg-blue-50/50 rounded-xl border border-blue-100 flex items-center justify-between">
+                   <div className="flex items-center space-x-2">
+                     <History className="w-4 h-4 text-blue-500" />
+                     <span className="text-[10px] font-black text-blue-700 uppercase tracking-widest">Showing Saved Audit</span>
+                   </div>
+                   <span className="text-[10px] font-mono font-bold text-blue-400">#{report.id}</span>
+                </div>
+              )}
             </div>
+            
             <div className="lg:col-span-2">
               {isAuditing ? (
                 <div className="bg-white rounded-2xl p-12 flex flex-col items-center justify-center min-h-[500px] border border-slate-200 shadow-sm text-center">
@@ -176,7 +199,7 @@ const App: React.FC = () => {
                 <div className="bg-white rounded-2xl p-12 flex flex-col items-center justify-center min-h-[500px] border-dashed border-2 border-slate-200 text-center shadow-inner">
                   <Activity className="w-16 h-16 text-slate-100 mb-4" />
                   <h3 className="text-xl font-black text-slate-300 uppercase tracking-tight">Scanner Idle</h3>
-                  <p className="text-sm text-slate-400 mt-1">Enter firewall details to begin LIVE n8n audit</p>
+                  <p className="text-sm text-slate-400 mt-1">No data found in database. Initiate a new audit to begin.</p>
                 </div>
               )}
             </div>
@@ -195,7 +218,7 @@ const App: React.FC = () => {
               {dbReports.length > 0 ? (
                 <div className="space-y-3">
                   {dbReports.map((r) => (
-                    <div key={r.id} onClick={() => loadArchiveDetail(r.id)} className="p-4 border border-slate-100 rounded-xl hover:border-blue-400 hover:bg-blue-50/20 transition-all flex items-center justify-between cursor-pointer group">
+                    <div key={r.id} onClick={() => loadArchiveDetail(r.id)} className={`p-4 border rounded-xl transition-all flex items-center justify-between cursor-pointer group ${report?.id === r.id ? 'border-blue-500 bg-blue-50/30' : 'border-slate-100 hover:border-blue-400 hover:bg-blue-50/20'}`}>
                       <div className="flex items-center gap-4">
                         <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold text-white shadow-sm ${r.overall_score > 60 ? 'bg-green-500' : r.overall_score > 40 ? 'bg-orange-500' : 'bg-red-500'}`}>
                           {r.overall_score || 0}
@@ -207,7 +230,7 @@ const App: React.FC = () => {
                           </div>
                         </div>
                       </div>
-                      <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-blue-500 transition-colors" />
+                      <ChevronRight className={`w-5 h-5 transition-colors ${report?.id === r.id ? 'text-blue-500' : 'text-slate-300 group-hover:text-blue-500'}`} />
                     </div>
                   ))}
                 </div>
