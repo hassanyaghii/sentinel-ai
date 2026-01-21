@@ -38,20 +38,32 @@ initDB();
 
 /**
  * 1. AI AUDIT PROXY
+ * Frontend -> Backend -> n8n -> (AI Agent -> MySQL) -> Return Result
  */
 app.post("/api/audit", async (req, res) => {
-  console.log("🚀 Proxying Audit request to n8n...");
+  console.log("🚀 Proxying LIVE Audit request to n8n @ 10.1.240.2...");
   try {
     const response = await fetch(N8N_AUDIT_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
       body: JSON.stringify(req.body)
     });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`❌ n8n returned error ${response.status}: ${errorText}`);
+      return res.status(response.status).json({ error: `n8n failed: ${response.statusText}`, details: errorText });
+    }
+
     const data = await response.json();
+    console.log("✅ Audit response received from n8n.");
     res.json(data);
   } catch (err) {
     console.error("Audit Proxy Error:", err);
-    res.status(500).json({ error: "Failed to reach n8n Audit Webhook" });
+    res.status(500).json({ error: "Failed to reach n8n Audit Webhook at 10.1.240.2. Check network connectivity." });
   }
 });
 
