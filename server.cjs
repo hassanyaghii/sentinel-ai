@@ -8,10 +8,10 @@ const https = require("https");
 const app = express();
 const port = process.env.PORT || 3001;
 
-// Your n8n Orchestrator URLs (10.1.240.2)
-const N8N_AUDIT_URL = "https://10.1.240.2/webhook/analyze-firewall";
-const N8N_CONFIG_URL = "https://10.1.240.2/webhook/getconfig";
-const N8N_LOGS_URL = "https://10.1.240.2/webhook/logs";
+// Your n8n Orchestrator URLs (n8n.bmbgroup.com)
+const N8N_AUDIT_URL = "https://n8n.bmbgroup.com/webhook/analyze-firewall";
+const N8N_CONFIG_URL = "https://n8n.bmbgroup.com/webhook/getconfig";
+const N8N_LOGS_URL = "https://n8n.bmbgroup.com/webhook/logs";
 
 // Create an agent that allows self-signed certificates
 const agent = new https.Agent({
@@ -191,7 +191,7 @@ app.listen(port, "0.0.0.0", () => {
   🛡️ Sentinel Proxy Server
   ------------------------
   Port: ${port}
-  n8n: https://10.1.240.2 (Insecure SSL allowed)
+  n8n: https://n8n.bmbgroup.com (Insecure SSL allowed)
   MySQL: ${dbConfig.database}
   ------------------------
   `);
