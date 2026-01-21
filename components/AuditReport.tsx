@@ -18,8 +18,8 @@ interface AuditReportProps {
 const FindingItem: React.FC<{ finding: any }> = ({ finding }) => {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Normalize risk field (AI Agents often return 'risk' or 'riskLevel' or 'severity')
-  const rawRisk = finding?.risk || finding?.riskLevel || finding?.severity || 'Low';
+  // Normalize risk field (Handle risk from n8n JSON or risk_level from MySQL)
+  const rawRisk = finding?.risk || finding?.risk_level || finding?.riskLevel || finding?.severity || 'Low';
   const riskLabel = String(rawRisk);
   const riskKey = riskLabel.toLowerCase();
   
@@ -82,14 +82,15 @@ const AuditReport: React.FC<AuditReportProps> = ({ report }) => {
   const [showFullSummary, setShowFullSummary] = useState(false);
 
   const safeReport = useMemo(() => {
-    // Basic unwrapping already happened in App.tsx, but we double-check common n8n field names
-    const base = report || {};
+    // n8n often returns an array [ { report } ], unwrap it if necessary
+    let base = Array.isArray(report) ? report[0] : report;
+    base = base || {};
     
     return {
       score: Number(base?.overallScore ?? base?.overall_score ?? base?.score ?? 0),
       summary: String(base?.summary ?? base?.analysis ?? "Audit analysis is complete."),
       findings: Array.isArray(base?.findings) ? base.findings : [],
-      device: base?.deviceInfo || base?.device_info || { hostname: 'N/A', firmware: 'N/A', uptime: 'N/A' }
+      device: base?.deviceInfo || base?.device_info || { hostname: base?.hostname || 'N/A', firmware: base?.device_firmware || 'N/A', uptime: 'N/A' }
     };
   }, [report]);
 
@@ -97,7 +98,7 @@ const AuditReport: React.FC<AuditReportProps> = ({ report }) => {
   const riskData = useMemo(() => {
     return riskLevels.map(level => {
       const count = safeReport.findings.filter((f: any) => {
-        const r = String(f?.risk || f?.riskLevel || f?.severity || '').toLowerCase();
+        const r = String(f?.risk || f?.risk_level || f?.riskLevel || f?.severity || '').toLowerCase();
         return r === level.toLowerCase();
       }).length;
       
@@ -203,15 +204,15 @@ const AuditReport: React.FC<AuditReportProps> = ({ report }) => {
              <div className="space-y-4 text-xs">
                 <div className="flex justify-between border-b border-white/5 pb-2">
                   <span className="text-slate-400 font-medium">Hostname</span>
-                  <span className="font-mono text-blue-100 font-bold">{safeReport.device.hostname || safeReport.device.name}</span>
+                  <span className="font-mono text-blue-100 font-bold">{safeReport.device.hostname || 'N/A'}</span>
                 </div>
                 <div className="flex justify-between border-b border-white/5 pb-2">
                   <span className="text-slate-400 font-medium">OS Version</span>
-                  <span className="text-blue-100 font-bold">{safeReport.device.firmware || safeReport.device.version}</span>
+                  <span className="text-blue-100 font-bold">{safeReport.device.firmware || 'N/A'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400 font-medium">Uptime</span>
-                  <span className="text-blue-100 font-bold">{safeReport.device.uptime}</span>
+                  <span className="text-blue-100 font-bold">{safeReport.device.uptime || 'N/A'}</span>
                 </div>
              </div>
           </div>
