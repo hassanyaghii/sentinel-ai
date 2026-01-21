@@ -8,12 +8,12 @@ const https = require("https");
 const app = express();
 const port = process.env.PORT || 3001;
 
-// Your n8n Orchestrator URLs (n8n.bmbgroup.com)
+// Your n8n Orchestrator URLs (10.1.240.2)
 const N8N_AUDIT_URL = "https://n8n.bmbgroup.com/webhook/analyze-firewall";
 const N8N_CONFIG_URL = "https://n8n.bmbgroup.com/webhook/getconfig";
 const N8N_LOGS_URL = "https://n8n.bmbgroup.com/webhook/logs";
 
-// Create an agent that allows self-signed certificates
+// Create an agent that allows self-signed certificates for Node's internal fetch
 const agent = new https.Agent({
   rejectUnauthorized: false
 });
@@ -44,20 +44,19 @@ initDB();
 
 /**
  * 1. AI AUDIT PROXY
+ * Changed method to POST because GET cannot have a body.
  */
 app.post("/api/audit", async (req, res) => {
-  console.log("🚀 Proxying LIVE Audit request to n8n (bypassing SSL check)...");
+  console.log("🚀 Proxying LIVE Audit request to n8n (POST)...");
+  // Bypass SSL check globally for this process
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+  
   try {
     const response = await fetch(N8N_AUDIT_URL, {
-      method: 'GET',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req.body),
-      dispatcher: agent // In Node 18+, fetch uses undici. We can also use process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0' as a fallback.
+      body: JSON.stringify(req.body)
     });
-    
-    // Fallback if the above doesn't work in specific node environments:
-    // Some node versions require setting the env var globally for global fetch
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
     if (!response.ok) throw new Error(`n8n audit error: ${response.statusText}`);
     const data = await response.json();
@@ -70,13 +69,14 @@ app.post("/api/audit", async (req, res) => {
 
 /**
  * 2. CONFIG FETCH PROXY
+ * Changed method to POST because GET cannot have a body.
  */
 app.post("/api/config", async (req, res) => {
-  console.log("🚀 Proxying Config Fetch to n8n...");
+  console.log("🚀 Proxying Config Fetch to n8n (POST)...");
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
   try {
     const response = await fetch(N8N_CONFIG_URL, {
-      method: 'GET',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req.body)
     });
@@ -85,19 +85,20 @@ app.post("/api/config", async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error("Config Proxy Error:", err);
-    res.status(500).json({ error: "Failed to reach n8n Config Webhook" });
+    res.status(500).json({ error: "Failed to reach n8n Config Webhook: " + err.message });
   }
 });
 
 /**
  * 3. LOG SYNC & DATABASE PERSISTENCE
+ * Changed method to POST because GET cannot have a body.
  */
 app.post("/api/logs", async (req, res) => {
-  console.log("🚀 Triggering n8n Telemetry Sync & Database Persistence...");
+  console.log("🚀 Triggering n8n Telemetry Sync (POST)...");
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
   try {
     const n8nResponse = await fetch(N8N_LOGS_URL, {
-      method: 'GET',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         ipAddress: req.body.ipAddress, 
@@ -191,7 +192,7 @@ app.listen(port, "0.0.0.0", () => {
   🛡️ Sentinel Proxy Server
   ------------------------
   Port: ${port}
-  n8n: https://n8n.bmbgroup.com (Insecure SSL allowed)
+  n8n: https://10.1.240.2 (SSL Bypassed)
   MySQL: ${dbConfig.database}
   ------------------------
   `);
