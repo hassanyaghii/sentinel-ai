@@ -18,7 +18,7 @@ interface AuditReportProps {
 const FindingItem: React.FC<{ finding: any }> = ({ finding }) => {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Normalize risk field (Handle 'risk' from n8n JSON or 'risk_level' from MySQL)
+  // Normalize risk field (n8n: 'risk', DB: 'risk_level')
   const rawRisk = finding?.risk || finding?.risk_level || finding?.riskLevel || finding?.severity || 'Low';
   const riskLabel = String(rawRisk);
   const riskKey = riskLabel.toLowerCase();

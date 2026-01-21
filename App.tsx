@@ -81,34 +81,45 @@ const App: React.FC = () => {
       }
       
       const data = await response.json();
-      console.log("Response from n8n proxy:", data);
+      console.log("Response from n8n proxy (Raw):", data);
 
-      // UNWRAP n8n Array if needed
+      // UNWRAP n8n Array if needed (your response is [{...}])
       const n8nResult = Array.isArray(data) ? data[0] : data;
 
-      // PRIORITY 1: If n8n gave us the findings DIRECTLY in the HTTP response, use them immediately.
-      if (n8nResult && (n8nResult.findings && n8nResult.findings.length > 0)) {
-        console.log("Using findings directly from n8n response.");
-        setReport(n8nResult);
-      } 
-      // PRIORITY 2: If n8n only gave us a success signal, wait for DB sync.
-      else {
-        console.log("Findings not in immediate response. Waiting for DB sync...");
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        const latestReports = await fetchArchive();
-        if (latestReports && latestReports.length > 0) {
-          const dbDetail = await loadArchiveDetail(latestReports[0].id);
-          if (dbDetail && dbDetail.findings && dbDetail.findings.length > 0) {
-             setReport(dbDetail);
-          } else {
-             // If DB didn't have findings but the original n8n response had a summary, show what we can
-             setReport(n8nResult || latestReports[0]);
-             console.warn("Findings missing in DB, using signal object.");
-          }
-        } else {
-          throw new Error("Audit finished but no record found in Archive. Check n8n logs.");
-        }
+      if (!n8nResult) {
+        throw new Error("n8n returned an empty response.");
       }
+
+      // Format correctly for the UI
+      const formattedReport = {
+        ...n8nResult,
+        overall_score: n8nResult.overallScore || n8nResult.overall_score,
+        findings: n8nResult.findings || []
+      };
+
+      // Set immediately to UI so user sees results
+      setReport(formattedReport);
+
+      // --- DATABASE SYNC FIX ---
+      // If the findings aren't getting to the DB, your backend 'server.js' needs to 
+      // handle the 'findings' array. As a workaround to ensure they exist in Archive,
+      // we check the DB after a short delay.
+      setTimeout(async () => {
+        const latest = await fetchArchive();
+        if (latest && latest.length > 0) {
+           const check = await loadArchiveDetail(latest[0].id);
+           if (!check || !check.findings || check.findings.length === 0) {
+             console.warn("Findings missing in DB. Sending persistence retry...");
+             // This assumes your backend has a way to update an existing report with findings
+             await fetch(`${API_BASE}/reports/${latest[0].id}/findings`, {
+               method: 'POST',
+               headers: { 'Content-Type': 'application/json' },
+               body: JSON.stringify({ findings: formattedReport.findings })
+             }).catch(e => console.error("Persistence fallback failed", e));
+           }
+        }
+      }, 5000);
+
     } catch (err: any) {
       console.error("Audit Request Failed:", err);
       setError(`Audit Failed: ${err.message}`);
