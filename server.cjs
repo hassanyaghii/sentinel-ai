@@ -3,6 +3,7 @@ require("dotenv").config();
 const express = require("express");
 const mysql = require("mysql2/promise");
 const cors = require("cors");
+const https = require("https");
 
 const app = express();
 const port = process.env.PORT || 3001;
@@ -11,6 +12,11 @@ const port = process.env.PORT || 3001;
 const N8N_AUDIT_URL = "https://10.1.240.2/webhook/analyze-firewall";
 const N8N_CONFIG_URL = "https://10.1.240.2/webhook/getconfig";
 const N8N_LOGS_URL = "https://10.1.240.2/webhook/logs";
+
+// Create an agent that allows self-signed certificates
+const agent = new https.Agent({
+  rejectUnauthorized: false
+});
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
@@ -40,20 +46,25 @@ initDB();
  * 1. AI AUDIT PROXY
  */
 app.post("/api/audit", async (req, res) => {
-  console.log("🚀 Proxying LIVE Audit request to n8n...");
+  console.log("🚀 Proxying LIVE Audit request to n8n (bypassing SSL check)...");
   try {
     const response = await fetch(N8N_AUDIT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req.body)
+      body: JSON.stringify(req.body),
+      dispatcher: agent // In Node 18+, fetch uses undici. We can also use process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0' as a fallback.
     });
     
+    // Fallback if the above doesn't work in specific node environments:
+    // Some node versions require setting the env var globally for global fetch
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
     if (!response.ok) throw new Error(`n8n audit error: ${response.statusText}`);
     const data = await response.json();
     res.json(data);
   } catch (err) {
     console.error("Audit Proxy Error:", err);
-    res.status(500).json({ error: "Failed to reach n8n Audit Webhook" });
+    res.status(500).json({ error: "Failed to reach n8n Audit Webhook: " + err.message });
   }
 });
 
@@ -62,6 +73,7 @@ app.post("/api/audit", async (req, res) => {
  */
 app.post("/api/config", async (req, res) => {
   console.log("🚀 Proxying Config Fetch to n8n...");
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
   try {
     const response = await fetch(N8N_CONFIG_URL, {
       method: 'POST',
@@ -79,10 +91,10 @@ app.post("/api/config", async (req, res) => {
 
 /**
  * 3. LOG SYNC & DATABASE PERSISTENCE
- * Triggers n8n -> Receives Logs -> Inserts into MySQL
  */
 app.post("/api/logs", async (req, res) => {
   console.log("🚀 Triggering n8n Telemetry Sync & Database Persistence...");
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
   try {
     const n8nResponse = await fetch(N8N_LOGS_URL, {
       method: 'POST',
@@ -101,7 +113,6 @@ app.post("/api/logs", async (req, res) => {
     }
     
     const logs = await n8nResponse.json();
-    // Normalize response - n8n might return object or array
     const logArray = Array.isArray(logs) ? logs : (logs.data && Array.isArray(logs.data)) ? logs.data : [logs];
 
     if (logArray.length > 0 && pool) {
@@ -180,7 +191,7 @@ app.listen(port, "0.0.0.0", () => {
   🛡️ Sentinel Proxy Server
   ------------------------
   Port: ${port}
-  n8n: https://10.1.240.2
+  n8n: https://10.1.240.2 (Insecure SSL allowed)
   MySQL: ${dbConfig.database}
   ------------------------
   `);
