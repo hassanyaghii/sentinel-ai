@@ -9,14 +9,12 @@ const app = express();
 const port = process.env.PORT || 3001;
 
 // Your n8n Orchestrator URLs (10.1.240.2)
-const N8N_AUDIT_URL = "https://n8n.bmbgroup.com/webhook/analyze-firewall";
-const N8N_CONFIG_URL = "https://n8n.bmbgroup.com/webhook/getconfig";
-const N8N_LOGS_URL = "https://n8n.bmbgroup.com/webhook/logs";
+const N8N_AUDIT_URL = "https://10.1.240.2/webhook/analyze-firewall";
+const N8N_CONFIG_URL = "https://10.1.240.2/webhook/getconfig";
+const N8N_LOGS_URL = "https://10.1.240.2/webhook/logs";
 
-// Create an agent that allows self-signed certificates for Node's internal fetch
-const agent = new https.Agent({
-  rejectUnauthorized: false
-});
+// Global setting to allow self-signed certificates for the internal network
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
@@ -44,13 +42,10 @@ initDB();
 
 /**
  * 1. AI AUDIT PROXY
- * Changed method to POST because GET cannot have a body.
+ * Explicitly using POST to support request body
  */
 app.post("/api/audit", async (req, res) => {
-  console.log("🚀 Proxying LIVE Audit request to n8n (POST)...");
-  // Bypass SSL check globally for this process
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-  
+  console.log("🚀 Proxying Audit request to n8n...");
   try {
     const response = await fetch(N8N_AUDIT_URL, {
       method: 'POST',
@@ -58,7 +53,11 @@ app.post("/api/audit", async (req, res) => {
       body: JSON.stringify(req.body)
     });
 
-    if (!response.ok) throw new Error(`n8n audit error: ${response.statusText}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`n8n error (${response.status}): ${errorText}`);
+    }
+    
     const data = await response.json();
     res.json(data);
   } catch (err) {
@@ -69,18 +68,19 @@ app.post("/api/audit", async (req, res) => {
 
 /**
  * 2. CONFIG FETCH PROXY
- * Changed method to POST because GET cannot have a body.
+ * Explicitly using POST to support request body
  */
 app.post("/api/config", async (req, res) => {
-  console.log("🚀 Proxying Config Fetch to n8n (POST)...");
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+  console.log("🚀 Proxying Config Fetch to n8n...");
   try {
     const response = await fetch(N8N_CONFIG_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req.body)
     });
+    
     if (!response.ok) throw new Error(`n8n config error: ${response.statusText}`);
+    
     const data = await response.json();
     res.json(data);
   } catch (err) {
@@ -91,11 +91,10 @@ app.post("/api/config", async (req, res) => {
 
 /**
  * 3. LOG SYNC & DATABASE PERSISTENCE
- * Changed method to POST because GET cannot have a body.
+ * Explicitly using POST to support request body
  */
 app.post("/api/logs", async (req, res) => {
-  console.log("🚀 Triggering n8n Telemetry Sync (POST)...");
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+  console.log("🚀 Triggering n8n Telemetry Sync...");
   try {
     const n8nResponse = await fetch(N8N_LOGS_URL, {
       method: 'POST',
@@ -109,15 +108,14 @@ app.post("/api/logs", async (req, res) => {
 
     if (!n8nResponse.ok) {
       const errorText = await n8nResponse.text();
-      console.error("❌ n8n Webhook Error:", errorText);
-      throw new Error(`n8n log fetch failed: ${n8nResponse.statusText}`);
+      throw new Error(`n8n log fetch failed: ${errorText}`);
     }
     
     const logs = await n8nResponse.json();
     const logArray = Array.isArray(logs) ? logs : (logs.data && Array.isArray(logs.data)) ? logs.data : [logs];
 
     if (logArray.length > 0 && pool) {
-      console.log(`📥 Received ${logArray.length} telemetry records. Persisting...`);
+      console.log(`📥 Received ${logArray.length} records. Updating MySQL...`);
       
       const insertQuery = `
         INSERT INTO firewall_logs 
@@ -143,10 +141,9 @@ app.post("/api/logs", async (req, res) => {
       ]);
 
       await pool.query(insertQuery, [values]);
-      console.log("✅ Telemetry logs synchronized and persisted to MySQL.");
     }
 
-    res.json({ success: true, count: logArray.length, message: "Sync complete" });
+    res.json({ success: true, count: logArray.length });
   } catch (err) {
     console.error("Log Sync Error:", err);
     res.status(500).json({ error: "Failed to sync telemetry: " + err.message });
@@ -192,8 +189,8 @@ app.listen(port, "0.0.0.0", () => {
   🛡️ Sentinel Proxy Server
   ------------------------
   Port: ${port}
-  n8n: https://n8n.bmbgroup.com (SSL Bypassed)
-  MySQL: ${dbConfig.database}
+  n8n Target: 10.1.240.2
+  SSL Security: Disabled for Internal Proxy
   ------------------------
   `);
 });
