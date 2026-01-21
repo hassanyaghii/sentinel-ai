@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Shield, RefreshCw, Database, List, ArrowRight, History, Code, X, FileText, AlertCircle, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { Shield, RefreshCw, Database, List, ArrowRight, History, Code, X, FileText, AlertCircle, ShieldCheck, ShieldAlert, Download, Key, Search } from 'lucide-react';
 
 const SNAPSHOTS_API = "/api/config-snapshots";
+const EXTRACTION_API = "/api/config"; // Routes to your n8n /getconfig webhook
 
 interface SavedConfig {
   id: string | number;
@@ -31,8 +32,13 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs }) => {
   const [configs, setConfigs] = useState<SavedConfig[]>([]);
   const [selectedId, setSelectedId] = useState<string | number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSourceModal, setShowSourceModal] = useState(false);
+
+  // Inputs for triggering n8n getconfig
+  const [ipAddress, setIpAddress] = useState('');
+  const [apiKey, setApiKey] = useState('');
 
   const fetchSnapshots = async () => {
     setIsLoading(true);
@@ -62,6 +68,39 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs }) => {
     }
   };
 
+  const handleRunExtraction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ipAddress || !apiKey) {
+      setError("IP Address and API Key are required to pull config.");
+      return;
+    }
+
+    setIsExtracting(true);
+    setError(null);
+
+    try {
+      const response = await fetch(EXTRACTION_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ipAddress, apiKey, vendor: 'paloalto' })
+      });
+      
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || "n8n Extraction failed");
+      }
+
+      // After n8n saves to DB, refresh our list
+      await fetchSnapshots();
+      setIpAddress('');
+      setApiKey('');
+    } catch (err: any) {
+      setError(err.message || "Failed to reach n8n agent");
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
   useEffect(() => {
     fetchSnapshots();
   }, []);
@@ -72,22 +111,16 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs }) => {
     if (!selected || !selected.raw_xml) return [];
     try {
       const parser = new DOMParser();
-      // Handle potential XML fragments by wrapping in a dummy root if necessary
       let xmlString = selected.raw_xml.trim();
       if (!xmlString.startsWith('<?xml') && !xmlString.startsWith('<response')) {
         xmlString = `<root>${xmlString}</root>`;
       }
       
       const xmlDoc = parser.parseFromString(xmlString, "text/xml");
-      
-      // Palo Alto Rule Path can vary based on n8n xpath. 
-      // We look for 'rules > entry' which is the common denominator.
       const ruleEntries = xmlDoc.querySelectorAll("rules > entry, security > rules > entry");
       
       const rules: InteractiveRule[] = [];
-      
       ruleEntries.forEach((entry) => {
-        // Only process entries that are inside a security rulebase
         const isSecurityRule = entry.parentElement?.tagName === 'rules' && 
                              (entry.parentElement.parentElement?.tagName === 'security' || 
                               entry.querySelector('action'));
@@ -145,13 +178,6 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs }) => {
           </div>
         </div>
         <div className="flex items-center space-x-3">
-          <button 
-            onClick={fetchSnapshots}
-            className="p-2 text-slate-400 hover:text-blue-600 transition-colors"
-            title="Refresh DB"
-          >
-            <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
-          </button>
           {selected && (
             <button 
               onClick={() => setShowSourceModal(true)}
@@ -167,8 +193,48 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs }) => {
       <div className="flex-1 flex overflow-hidden gap-6">
         {/* SIDEBAR */}
         <div className="w-72 flex flex-col space-y-4 shrink-0">
+          {/* EXTRACTION FORM */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+              <Download className="w-3 h-3" /> Pull Configuration
+            </h3>
+            <form onSubmit={handleRunExtraction} className="space-y-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                <input 
+                  type="text" 
+                  placeholder="Device IP" 
+                  value={ipAddress} 
+                  onChange={(e) => setIpAddress(e.target.value)} 
+                  className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 font-mono" 
+                />
+              </div>
+              <div className="relative">
+                <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                <input 
+                  type="password" 
+                  placeholder="API Key" 
+                  value={apiKey} 
+                  onChange={(e) => setApiKey(e.target.value)} 
+                  className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20" 
+                />
+              </div>
+              <button 
+                type="submit" 
+                disabled={isExtracting} 
+                className="w-full py-2 bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl flex items-center justify-center space-x-2 shadow-lg transition-all disabled:bg-slate-300 active:scale-95"
+              >
+                {isExtracting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                <span>{isExtracting ? 'Extracting...' : 'Get Config'}</span>
+              </button>
+            </form>
+          </div>
+
           <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col p-3">
-            <h4 className="px-2 text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Snapshot History</h4>
+            <div className="flex items-center justify-between mb-3 px-2">
+              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Snapshots</h4>
+              <button onClick={fetchSnapshots} className="text-slate-400 hover:text-blue-600"><RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} /></button>
+            </div>
             <div className="flex-1 overflow-auto space-y-2 custom-scrollbar">
               {configs.map(c => (
                 <div 
@@ -205,6 +271,12 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs }) => {
                 <div className="h-full flex flex-col items-center justify-center space-y-4">
                    <div className="w-10 h-10 border-4 border-slate-100 border-t-blue-600 rounded-full animate-spin"></div>
                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Parsing Database XML...</p>
+                </div>
+             ) : error ? (
+                <div className="h-full flex flex-col items-center justify-center text-red-500 space-y-2">
+                   <AlertCircle className="w-10 h-10" />
+                   <p className="text-xs font-bold uppercase">{error}</p>
+                   <button onClick={fetchSnapshots} className="text-[10px] font-black underline">Retry Load</button>
                 </div>
              ) : parsedRules.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -265,7 +337,7 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs }) => {
                 <div className="h-full flex flex-col items-center justify-center opacity-30">
                   <List className="w-12 h-12 mb-2" />
                   <p className="text-[10px] font-black uppercase tracking-widest">
-                    {selected ? "Xpath did not contain rulebase" : "Select a record to see rules"}
+                    {selected ? "Xpath did not contain rulebase" : "Enter IP & Key to pull data"}
                   </p>
                 </div>
              )}
