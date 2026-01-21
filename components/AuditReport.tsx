@@ -18,7 +18,7 @@ interface AuditReportProps {
 const FindingItem: React.FC<{ finding: any }> = ({ finding }) => {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Normalize risk field (Handle risk from n8n JSON or risk_level from MySQL)
+  // Normalize risk field (Handle 'risk' from n8n JSON or 'risk_level' from MySQL)
   const rawRisk = finding?.risk || finding?.risk_level || finding?.riskLevel || finding?.severity || 'Low';
   const riskLabel = String(rawRisk);
   const riskKey = riskLabel.toLowerCase();
@@ -82,7 +82,7 @@ const AuditReport: React.FC<AuditReportProps> = ({ report }) => {
   const [showFullSummary, setShowFullSummary] = useState(false);
 
   const safeReport = useMemo(() => {
-    // n8n often returns an array [ { report } ], unwrap it if necessary
+    // n8n returns an array [ { ... } ], so we unwrap it
     let base = Array.isArray(report) ? report[0] : report;
     base = base || {};
     

@@ -40,12 +40,10 @@ const App: React.FC = () => {
 
   const loadArchiveDetail = async (id: number) => {
     try {
-      // Don't clear report here so we don't have flickering if we are just refreshing
       const response = await fetch(`${API_BASE}/reports/${id}`);
       if (response.ok) {
         const data = await response.json();
         console.log("Loaded Report Detail:", data);
-        setReport(data);
         return data;
       }
     } catch (err) {
@@ -83,25 +81,33 @@ const App: React.FC = () => {
       }
       
       const data = await response.json();
-      console.log("Response from n8n proxy (Control Signal):", data);
+      console.log("Response from n8n proxy:", data);
 
-      // Even if data is returned, we prefer the source of truth in the DB
-      // Wait for n8n to finish its DB write operation
-      console.log("Waiting for database commit...");
-      await new Promise(resolve => setTimeout(resolve, 2500));
-      
-      const latestReports = await fetchArchive();
-      if (latestReports && latestReports.length > 0) {
-        // Fetch the detailed findings for the top-most (newest) record
-        const fullReport = await loadArchiveDetail(latestReports[0].id);
-        if (!fullReport || !fullReport.findings || fullReport.findings.length === 0) {
-           console.warn("Report found but findings are empty. n8n may still be writing.");
-           // Optional: One more retry
-           await new Promise(resolve => setTimeout(resolve, 2000));
-           await loadArchiveDetail(latestReports[0].id);
+      // UNWRAP n8n Array if needed
+      const n8nResult = Array.isArray(data) ? data[0] : data;
+
+      // PRIORITY 1: If n8n gave us the findings DIRECTLY in the HTTP response, use them immediately.
+      if (n8nResult && (n8nResult.findings && n8nResult.findings.length > 0)) {
+        console.log("Using findings directly from n8n response.");
+        setReport(n8nResult);
+      } 
+      // PRIORITY 2: If n8n only gave us a success signal, wait for DB sync.
+      else {
+        console.log("Findings not in immediate response. Waiting for DB sync...");
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        const latestReports = await fetchArchive();
+        if (latestReports && latestReports.length > 0) {
+          const dbDetail = await loadArchiveDetail(latestReports[0].id);
+          if (dbDetail && dbDetail.findings && dbDetail.findings.length > 0) {
+             setReport(dbDetail);
+          } else {
+             // If DB didn't have findings but the original n8n response had a summary, show what we can
+             setReport(n8nResult || latestReports[0]);
+             console.warn("Findings missing in DB, using signal object.");
+          }
+        } else {
+          throw new Error("Audit finished but no record found in Archive. Check n8n logs.");
         }
-      } else {
-        throw new Error("Audit finished but no record found in Archive. Check n8n logs.");
       }
     } catch (err: any) {
       console.error("Audit Request Failed:", err);
@@ -184,7 +190,7 @@ const App: React.FC = () => {
               {dbReports.length > 0 ? (
                 <div className="space-y-3">
                   {dbReports.map((r) => (
-                    <div key={r.id} onClick={() => loadArchiveDetail(r.id).then(() => setActiveTab('audit'))} className="p-4 border border-slate-100 rounded-xl hover:border-blue-400 hover:bg-blue-50/20 transition-all flex items-center justify-between cursor-pointer group">
+                    <div key={r.id} onClick={() => loadArchiveDetail(r.id).then((det) => { setReport(det); setActiveTab('audit'); })} className="p-4 border border-slate-100 rounded-xl hover:border-blue-400 hover:bg-blue-50/20 transition-all flex items-center justify-between cursor-pointer group">
                       <div className="flex items-center gap-4">
                         <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold text-white shadow-sm ${r.overall_score > 60 ? 'bg-green-500' : r.overall_score > 40 ? 'bg-orange-500' : 'bg-red-500'}`}>
                           {r.overall_score || 0}
