@@ -39,7 +39,7 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
         setLogs(data);
       }
     } catch (err) {
-      console.error("Failed to load historical logs:", err);
+      console.error("Failed to load historical logs from DB:", err);
     }
   };
 
@@ -49,10 +49,13 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
   }, [initialFilter]);
 
   const handleFetchLogs = async () => {
+    // Clear old state to show the user we are doing a FRESH sync via n8n
     setIsFetching(true);
     setError(null);
+    setLogs([]); // Optional: Clear existing list to prevent seeing "old" data during fetch
+    
     try {
-      // Trigger the backend proxy, which hits n8n
+      console.log("Triggering n8n Telemetry Sync via Backend Proxy...");
       const response = await fetch(LOGS_API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -62,12 +65,19 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
         })
       });
       
-      if (!response.ok) throw new Error("n8n Orchestration failed");
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || "n8n Orchestration for logs failed");
+      }
       
-      // Since n8n handles the DB INSERT, we simply refresh our local view from the DB now
+      console.log("n8n Sync Complete. Refreshing UI from MySQL...");
+      // After n8n finishes (and inserts into MySQL), we refresh our view
       await fetchLogsFromDB();
     } catch (err: any) {
-      setError(err.message || "Failed to sync with n8n agent");
+      console.error("Telemetry Sync Error:", err);
+      setError(err.message || "Failed to sync with n8n agent @ 10.1.240.2");
+      // Fallback: try to load what we have in DB anyway
+      await fetchLogsFromDB();
     } finally {
       setIsFetching(false);
     }
@@ -110,7 +120,7 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
             className="px-8 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest bg-slate-900 text-white hover:bg-black shadow-lg flex items-center space-x-3 transition-all active:scale-95"
           >
             {isFetching ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            <span>Trigger n8n Sync</span>
+            <span>{isFetching ? 'Syncing n8n...' : 'Trigger n8n Sync'}</span>
           </button>
         </div>
         
@@ -128,50 +138,57 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
       </div>
 
       <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-        {error && <div className="p-4 bg-red-50 text-red-600 text-xs font-bold border-b border-red-100">{error}</div>}
+        {error && <div className="p-4 bg-red-50 text-red-600 text-xs font-bold border-b border-red-100">⚠️ {error}</div>}
         <div className="flex-1 overflow-auto custom-scrollbar">
-          <table className="min-w-full divide-y divide-slate-200">
-            <thead className="bg-slate-50 sticky top-0 z-10">
-              <tr>
-                <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase text-left">Time</th>
-                <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase text-left">Admin</th>
-                <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase text-left">Action</th>
-                <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase text-left">Log Path & Changes</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredLogs.length > 0 ? filteredLogs.map((log, idx) => (
-                <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
-                  <td className="px-4 py-4 text-[11px] font-mono text-slate-500 font-bold whitespace-nowrap">
-                    <div className="flex items-center space-x-2">
-                       <Clock className="w-3 h-3 text-slate-300" />
-                       <span>{new Date(log.receive_time).toLocaleString()}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4">
-                     <span className="px-2 py-1 bg-slate-100 rounded-lg text-[10px] font-black text-slate-700 uppercase">{log.admin_user}</span>
-                  </td>
-                  <td className="px-4 py-4">
-                     <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${log.command === 'edit' ? 'bg-amber-100 text-amber-700' : log.command === 'delete' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
-                        {log.command}
-                     </span>
-                  </td>
-                  <td className="px-4 py-4 text-xs">
-                    <div className="space-y-1">
-                      <div className="text-[10px] font-mono line-clamp-1 text-slate-400 bg-slate-50 p-1 rounded italic">{log.config_path}</div>
-                      {log.after_change && (
-                        <div className="text-[10px] bg-emerald-50 text-emerald-700 p-2 rounded border border-emerald-100 font-mono">
-                           <span className="font-black mr-2">CHANGED TO:</span>{log.after_change}
-                        </div>
-                      )}
-                    </div>
-                  </td>
+          {isFetching && logs.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center space-y-4">
+              <div className="w-12 h-12 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">n8n is collecting logs...</p>
+            </div>
+          ) : (
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="bg-slate-50 sticky top-0 z-10">
+                <tr>
+                  <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase text-left">Time</th>
+                  <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase text-left">Admin</th>
+                  <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase text-left">Action</th>
+                  <th className="px-4 py-4 text-[10px] font-black text-slate-400 uppercase text-left">Log Path & Changes</th>
                 </tr>
-              )) : (
-                <tr><td colSpan={4} className="py-40 text-center text-slate-300 uppercase tracking-widest text-[10px] font-black">No telemetry data found in database</td></tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredLogs.length > 0 ? filteredLogs.map((log, idx) => (
+                  <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
+                    <td className="px-4 py-4 text-[11px] font-mono text-slate-500 font-bold whitespace-nowrap">
+                      <div className="flex items-center space-x-2">
+                         <Clock className="w-3 h-3 text-slate-300" />
+                         <span>{new Date(log.receive_time).toLocaleString()}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                       <span className="px-2 py-1 bg-slate-100 rounded-lg text-[10px] font-black text-slate-700 uppercase">{log.admin_user}</span>
+                    </td>
+                    <td className="px-4 py-4">
+                       <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${log.command === 'edit' ? 'bg-amber-100 text-amber-700' : log.command === 'delete' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                          {log.command}
+                       </span>
+                    </td>
+                    <td className="px-4 py-4 text-xs">
+                      <div className="space-y-1">
+                        <div className="text-[10px] font-mono line-clamp-1 text-slate-400 bg-slate-50 p-1 rounded italic">{log.config_path}</div>
+                        {log.after_change && (
+                          <div className="text-[10px] bg-emerald-50 text-emerald-700 p-2 rounded border border-emerald-100 font-mono">
+                             <span className="font-black mr-2">CHANGED TO:</span>{log.after_change}
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )) : (
+                  <tr><td colSpan={4} className="py-40 text-center text-slate-300 uppercase tracking-widest text-[10px] font-black">No telemetry data found in database</td></tr>
+                )}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>

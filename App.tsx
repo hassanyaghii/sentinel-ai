@@ -39,6 +39,9 @@ const App: React.FC = () => {
 
   const loadArchiveDetail = async (id: number) => {
     try {
+      // Clear current report first to ensure we aren't showing stale UI
+      setReport(null);
+      setError(null);
       const response = await fetch(`${API_BASE}/reports/${id}`);
       if (response.ok) {
         const data = await response.json();
@@ -47,6 +50,7 @@ const App: React.FC = () => {
       }
     } catch (err) {
       console.error("Detail fetch error:", err);
+      setError("Failed to load archived report detail.");
     }
   };
 
@@ -60,9 +64,13 @@ const App: React.FC = () => {
   }, [activeTab]);
 
   const handleRunAudit = async (auditConfig: AuditConfig) => {
-    setIsAuditing(true);
+    // CRITICAL: Clear previous report and errors to ensure we trigger a FRESH audit
+    setReport(null);
     setError(null);
+    setIsAuditing(true);
+    
     try {
+      console.log("Triggering live audit via backend proxy to n8n...");
       const response = await fetch(`${API_BASE}/audit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -70,14 +78,22 @@ const App: React.FC = () => {
       });
       
       if (!response.ok) {
-        throw new Error(`Server Error: ${response.statusText}`);
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `Server Error: ${response.statusText}`);
       }
       
       const data = await response.json();
-      setReport(data);
+      
+      // If n8n returns the object, we display it immediately
+      if (data) {
+        console.log("Audit complete. Data received from n8n:", data);
+        setReport(data);
+      } else {
+        throw new Error("n8n returned an empty response.");
+      }
     } catch (err: any) {
       console.error("Audit Request Failed:", err);
-      setError(`Failed to trigger n8n audit: ${err.message}`);
+      setError(`Audit Failed: ${err.message}`);
     } finally {
       setIsAuditing(false);
     }
@@ -88,12 +104,12 @@ const App: React.FC = () => {
       <nav className="bg-slate-900 text-white border-b border-slate-700 h-16 sticky top-0 z-50 shadow-xl">
         <div className="max-w-7xl mx-auto px-4 h-full flex items-center justify-between">
           <div className="flex items-center space-x-8">
-            <div className="flex items-center space-x-3 cursor-pointer" onClick={() => { setActiveTab('audit'); setReport(null); }}>
+            <div className="flex items-center space-x-3 cursor-pointer" onClick={() => { setActiveTab('audit'); setReport(null); setError(null); }}>
               <ShieldCheck className="w-8 h-8 text-blue-500" />
               <span className="text-xl font-bold tracking-tight">Sentinel <span className="text-blue-500 uppercase text-xs ml-1">PAN-OS</span></span>
             </div>
             <div className="flex space-x-1">
-              <button onClick={() => { setActiveTab('audit'); setReport(null); setError(null); }} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'audit' ? 'bg-blue-600' : 'text-slate-400 hover:text-white'}`}>AI Audit</button>
+              <button onClick={() => { setActiveTab('audit'); setReport(null); setError(null); }} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'audit' && !report ? 'bg-blue-600' : 'text-slate-400 hover:text-white'}`}>AI Audit</button>
               <button onClick={() => setActiveTab('archive')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'archive' ? 'bg-blue-600' : 'text-slate-400 hover:text-white'}`}>Archive</button>
               <button onClick={() => setActiveTab('monitor')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'monitor' ? 'bg-blue-600' : 'text-slate-400 hover:text-white'}`}>Telemetry</button>
               <button onClick={() => setActiveTab('explorer')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'explorer' ? 'bg-blue-600' : 'text-slate-400 hover:text-white'}`}>Explorer</button>
@@ -121,8 +137,10 @@ const App: React.FC = () => {
               {isAuditing ? (
                 <div className="bg-white rounded-2xl p-12 flex flex-col items-center justify-center min-h-[500px] border border-slate-200 shadow-sm">
                   <div className="w-16 h-16 border-4 border-blue-50 border-t-blue-600 rounded-full animate-spin"></div>
-                  <h3 className="mt-8 text-lg font-black text-slate-900 uppercase tracking-widest">n8n: Analyzing Config...</h3>
-                  <p className="text-xs text-slate-400 mt-2 font-bold uppercase tracking-widest">Waiting for AI Agent response</p>
+                  <h3 className="mt-8 text-lg font-black text-slate-900 uppercase tracking-widest text-center">n8n Orchestration in Progress</h3>
+                  <p className="text-xs text-slate-400 mt-2 font-bold uppercase tracking-widest text-center">
+                    Fetching Config &rarr; Triggering AI Agent &rarr; Parsing Analysis
+                  </p>
                 </div>
               ) : report ? (
                 <AuditReport report={report} />
@@ -130,7 +148,7 @@ const App: React.FC = () => {
                 <div className="bg-white rounded-2xl p-12 flex flex-col items-center justify-center min-h-[500px] border-dashed border-2 border-slate-200 text-center shadow-inner">
                   <Activity className="w-16 h-16 text-slate-100 mb-4" />
                   <h3 className="text-xl font-black text-slate-300 uppercase tracking-tight">Scanner Idle</h3>
-                  <p className="text-sm text-slate-400 mt-1">Enter firewall details to begin audit</p>
+                  <p className="text-sm text-slate-400 mt-1">Enter firewall details to begin LIVE n8n audit</p>
                 </div>
               )}
             </div>
