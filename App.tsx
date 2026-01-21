@@ -43,7 +43,9 @@ const App: React.FC = () => {
       const response = await fetch(`${API_BASE}/reports/${id}`);
       if (response.ok) {
         const data = await response.json();
-        console.log("Loaded Report Detail:", data);
+        // Archive data from DB is already snake_case
+        setReport(data);
+        setActiveTab('audit');
         return data;
       }
     } catch (err) {
@@ -68,7 +70,6 @@ const App: React.FC = () => {
     setIsAuditing(true);
     
     try {
-      console.log("Triggering live audit via backend proxy to n8n...");
       const response = await fetch(`${API_BASE}/audit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -81,31 +82,25 @@ const App: React.FC = () => {
       }
       
       const rawData = await response.json();
-      console.log("Response from n8n (Raw):", rawData);
-
-      // 1. UNWRAP: n8n returns [{...}], extract the first object
+      
+      // 1. UNWRAP the n8n array
       const n8nData = Array.isArray(rawData) ? rawData[0] : rawData;
 
       if (!n8nData) {
         throw new Error("n8n returned an empty response.");
       }
 
-      // 2. NORMALIZE: Ensure fields match what AuditReport.tsx expects (overall_score, findings, etc.)
+      // 2. NORMALIZE fields for the AuditReport component
+      // We convert n8n's 'overallScore' to the 'overall_score' that the UI expects
       const normalizedReport = {
         ...n8nData,
-        // Map n8n 'overallScore' to 'overall_score'
         overall_score: n8nData.overallScore !== undefined ? n8nData.overallScore : (n8nData.overall_score || 0),
-        // Ensure findings is an array
         findings: Array.isArray(n8nData.findings) ? n8nData.findings : [],
-        // Ensure summary exists
-        summary: n8nData.summary || n8nData.analysis || "Audit analysis complete.",
-        // Device info
-        device_info: n8nData.deviceInfo || n8nData.device_info || { hostname: 'Unknown', firmware: 'Unknown', uptime: 'N/A' }
+        summary: n8nData.summary || n8nData.analysis || "Audit complete.",
+        device_info: n8nData.deviceInfo || n8nData.device_info || { hostname: 'Unknown', firmware: 'Unknown' }
       };
 
-      console.log("Normalized for UI:", normalizedReport);
-
-      // 3. DISPLAY: Update state with normalized data
+      // 3. Update state - this will immediately fix the 0% and empty findings issue
       setReport(normalizedReport);
 
       // Refresh archive in background
@@ -192,7 +187,7 @@ const App: React.FC = () => {
               {dbReports.length > 0 ? (
                 <div className="space-y-3">
                   {dbReports.map((r) => (
-                    <div key={r.id} onClick={() => loadArchiveDetail(r.id).then((det) => { setReport(det); setActiveTab('audit'); })} className="p-4 border border-slate-100 rounded-xl hover:border-blue-400 hover:bg-blue-50/20 transition-all flex items-center justify-between cursor-pointer group">
+                    <div key={r.id} onClick={() => loadArchiveDetail(r.id)} className="p-4 border border-slate-100 rounded-xl hover:border-blue-400 hover:bg-blue-50/20 transition-all flex items-center justify-between cursor-pointer group">
                       <div className="flex items-center gap-4">
                         <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold text-white shadow-sm ${r.overall_score > 60 ? 'bg-green-500' : r.overall_score > 40 ? 'bg-orange-500' : 'bg-red-500'}`}>
                           {r.overall_score || 0}

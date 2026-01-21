@@ -6,8 +6,7 @@ import {
   AlertTriangle, 
   Zap, 
   ChevronDown, 
-  ChevronUp, 
-  ArrowRight 
+  ChevronUp 
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 
@@ -18,7 +17,7 @@ interface AuditReportProps {
 const FindingItem: React.FC<{ finding: any }> = ({ finding }) => {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Normalize risk field (n8n uses 'risk', DB uses 'risk_level')
+  // Normalize risk field (n8n: 'risk', DB: 'risk_level')
   const rawRisk = finding?.risk || finding?.risk_level || finding?.riskLevel || finding?.severity || 'Low';
   const riskLabel = String(rawRisk);
   const riskKey = riskLabel.toLowerCase();
@@ -82,19 +81,19 @@ const AuditReport: React.FC<AuditReportProps> = ({ report }) => {
   const [showFullSummary, setShowFullSummary] = useState(false);
 
   const safeReport = useMemo(() => {
-    // Standardize input from either n8n direct or Database Archive
+    // Standardize input from either n8n direct (camelCase) or Database Archive (snake_case)
     let base = Array.isArray(report) ? report[0] : report;
     base = base || {};
     
     // Check both n8n camelCase and DB snake_case
     const score = base.overallScore !== undefined ? base.overallScore : (base.overall_score !== undefined ? base.overall_score : 0);
-    const summary = base.summary || base.analysis || "Analysis complete.";
+    const summary = base.summary || base.analysis || "Audit analysis complete.";
     const findings = Array.isArray(base.findings) ? base.findings : [];
     
     const device = base.deviceInfo || base.device_info || { 
       hostname: base.hostname || 'Unknown', 
-      firmware: base.device_firmware || 'Unknown', 
-      uptime: 'Unknown' 
+      firmware: base.device_firmware || base.firmware || 'Unknown', 
+      uptime: base.uptime || 'Unknown' 
     };
 
     return { score, summary, findings, device };
@@ -104,7 +103,7 @@ const AuditReport: React.FC<AuditReportProps> = ({ report }) => {
   const riskData = useMemo(() => {
     return riskLevels.map(level => {
       const count = safeReport.findings.filter((f: any) => {
-        const r = String(f?.risk || f?.risk_level || f?.riskLevel || '').toLowerCase();
+        const r = String(f?.risk || f?.risk_level || f?.riskLevel || f?.severity || '').toLowerCase();
         return r === level.toLowerCase();
       }).length;
       
