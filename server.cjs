@@ -43,7 +43,7 @@ app.post("/api/audit", async (req, res) => {
   console.log("🚀 Proxying LIVE Audit request to n8n...");
   try {
     const response = await fetch(N8N_AUDIT_URL, {
-      method: 'GET',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req.body)
     });
@@ -64,7 +64,7 @@ app.post("/api/config", async (req, res) => {
   console.log("🚀 Proxying Config Fetch to n8n...");
   try {
     const response = await fetch(N8N_CONFIG_URL, {
-      method: 'GET',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req.body)
     });
@@ -85,7 +85,7 @@ app.post("/api/logs", async (req, res) => {
   console.log("🚀 Triggering n8n Telemetry Sync & Database Persistence...");
   try {
     const n8nResponse = await fetch(N8N_LOGS_URL, {
-      method: 'GET',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         ipAddress: req.body.ipAddress, 
