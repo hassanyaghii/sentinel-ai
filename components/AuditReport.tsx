@@ -18,7 +18,7 @@ interface AuditReportProps {
 const FindingItem: React.FC<{ finding: any }> = ({ finding }) => {
   const [isOpen, setIsOpen] = useState(false);
 
-  // Normalize risk field (n8n: 'risk', DB: 'risk_level')
+  // Normalize risk field (n8n uses 'risk', DB uses 'risk_level')
   const rawRisk = finding?.risk || finding?.risk_level || finding?.riskLevel || finding?.severity || 'Low';
   const riskLabel = String(rawRisk);
   const riskKey = riskLabel.toLowerCase();
@@ -82,23 +82,29 @@ const AuditReport: React.FC<AuditReportProps> = ({ report }) => {
   const [showFullSummary, setShowFullSummary] = useState(false);
 
   const safeReport = useMemo(() => {
-    // n8n returns an array [ { ... } ], so we unwrap it
+    // Standardize input from either n8n direct or Database Archive
     let base = Array.isArray(report) ? report[0] : report;
     base = base || {};
     
-    return {
-      score: Number(base?.overallScore ?? base?.overall_score ?? base?.score ?? 0),
-      summary: String(base?.summary ?? base?.analysis ?? "Audit analysis is complete."),
-      findings: Array.isArray(base?.findings) ? base.findings : [],
-      device: base?.deviceInfo || base?.device_info || { hostname: base?.hostname || 'N/A', firmware: base?.device_firmware || 'N/A', uptime: 'N/A' }
+    // Check both n8n camelCase and DB snake_case
+    const score = base.overallScore !== undefined ? base.overallScore : (base.overall_score !== undefined ? base.overall_score : 0);
+    const summary = base.summary || base.analysis || "Analysis complete.";
+    const findings = Array.isArray(base.findings) ? base.findings : [];
+    
+    const device = base.deviceInfo || base.device_info || { 
+      hostname: base.hostname || 'Unknown', 
+      firmware: base.device_firmware || 'Unknown', 
+      uptime: 'Unknown' 
     };
+
+    return { score, summary, findings, device };
   }, [report]);
 
   const riskLevels = ['Critical', 'High', 'Medium', 'Low'];
   const riskData = useMemo(() => {
     return riskLevels.map(level => {
       const count = safeReport.findings.filter((f: any) => {
-        const r = String(f?.risk || f?.risk_level || f?.riskLevel || f?.severity || '').toLowerCase();
+        const r = String(f?.risk || f?.risk_level || f?.riskLevel || '').toLowerCase();
         return r === level.toLowerCase();
       }).length;
       

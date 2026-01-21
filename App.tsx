@@ -83,42 +83,28 @@ const App: React.FC = () => {
       const data = await response.json();
       console.log("Response from n8n proxy (Raw):", data);
 
-      // UNWRAP n8n Array if needed (your response is [{...}])
+      // UNWRAP n8n Array if needed (Your JSON shows it's inside an array)
       const n8nResult = Array.isArray(data) ? data[0] : data;
 
       if (!n8nResult) {
         throw new Error("n8n returned an empty response.");
       }
 
-      // Format correctly for the UI
+      // NORMALIZE FIELD NAMES
+      // n8n uses camelCase (overallScore), DB uses snake_case (overall_score)
       const formattedReport = {
         ...n8nResult,
-        overall_score: n8nResult.overallScore || n8nResult.overall_score,
+        overall_score: n8nResult.overallScore !== undefined ? n8nResult.overallScore : n8nResult.overall_score,
         findings: n8nResult.findings || []
       };
+
+      console.log("Formatted Report for UI:", formattedReport);
 
       // Set immediately to UI so user sees results
       setReport(formattedReport);
 
-      // --- DATABASE SYNC FIX ---
-      // If the findings aren't getting to the DB, your backend 'server.js' needs to 
-      // handle the 'findings' array. As a workaround to ensure they exist in Archive,
-      // we check the DB after a short delay.
-      setTimeout(async () => {
-        const latest = await fetchArchive();
-        if (latest && latest.length > 0) {
-           const check = await loadArchiveDetail(latest[0].id);
-           if (!check || !check.findings || check.findings.length === 0) {
-             console.warn("Findings missing in DB. Sending persistence retry...");
-             // This assumes your backend has a way to update an existing report with findings
-             await fetch(`${API_BASE}/reports/${latest[0].id}/findings`, {
-               method: 'POST',
-               headers: { 'Content-Type': 'application/json' },
-               body: JSON.stringify({ findings: formattedReport.findings })
-             }).catch(e => console.error("Persistence fallback failed", e));
-           }
-        }
-      }, 5000);
+      // Re-fetch archive in background so the Archive tab is up to date
+      fetchArchive();
 
     } catch (err: any) {
       console.error("Audit Request Failed:", err);
