@@ -1,16 +1,17 @@
 
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Database, Activity, History, Clock, ChevronRight } from 'lucide-react';
+import { ShieldCheck, Database, Activity, History, Clock, ChevronRight, LayoutDashboard } from 'lucide-react';
 import SetupForm from './components/SetupForm';
 import AuditReport from './components/AuditReport';
 import ConfigExplorer from './components/ConfigExplorer';
 import MonitorTab from './components/MonitorTab';
+import DashboardTab from './components/DashboardTab';
 import { AuditConfig } from './types';
 
 const API_BASE = "/api";
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'audit' | 'archive' | 'explorer' | 'monitor'>('audit');
+  const [activeTab, setActiveTab] = useState<'audit' | 'archive' | 'explorer' | 'monitor' | 'dashboard'>('audit');
   const [isAuditing, setIsAuditing] = useState(false);
   const [report, setReport] = useState<any>(null);
   const [dbReports, setDbReports] = useState<any[]>([]);
@@ -67,7 +68,7 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'archive') fetchArchive();
+    if (activeTab === 'archive' || activeTab === 'dashboard') fetchArchive();
   }, [activeTab]);
 
   const handleRunAudit = async (auditConfig: AuditConfig) => {
@@ -77,7 +78,6 @@ const App: React.FC = () => {
     setActiveTab('audit');
     
     try {
-      // 1. Trigger the n8n Agent via Backend Proxy
       const response = await fetch(`${API_BASE}/audit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -89,13 +89,10 @@ const App: React.FC = () => {
         throw new Error(errData.error || `Server Error: ${response.statusText}`);
       }
 
-      // 2. Short delay to allow n8n to complete MySQL insertions
       await new Promise(resolve => setTimeout(resolve, 2000));
 
-      // 3. Fetch the absolute latest record from the DB Archive
       const updatedArchives = await fetchArchive();
       if (updatedArchives && updatedArchives.length > 0) {
-        // Automatically load and display the newest report found in the database
         await loadArchiveDetail(updatedArchives[0].id);
       } else {
         throw new Error("Audit finished but no record found in history database.");
@@ -108,7 +105,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+    <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-900">
       <nav className="bg-slate-900 text-white border-b border-slate-700 h-16 sticky top-0 z-50 shadow-xl">
         <div className="max-w-7xl mx-auto px-4 h-full flex items-center justify-between">
           <div className="flex items-center space-x-8">
@@ -118,6 +115,7 @@ const App: React.FC = () => {
             </div>
             <div className="flex space-x-1">
               <button onClick={() => { setActiveTab('audit'); setError(null); }} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'audit' ? 'bg-blue-600' : 'text-slate-400 hover:text-white'}`}>AI Audit</button>
+              <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'dashboard' ? 'bg-blue-600' : 'text-slate-400 hover:text-white'}`}>Dashboard</button>
               <button onClick={() => setActiveTab('archive')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'archive' ? 'bg-blue-600' : 'text-slate-400 hover:text-white'}`}>Archive</button>
               <button onClick={() => setActiveTab('monitor')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'monitor' ? 'bg-blue-600' : 'text-slate-400 hover:text-white'}`}>Telemetry</button>
               <button onClick={() => setActiveTab('explorer')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === 'explorer' ? 'bg-blue-600' : 'text-slate-400 hover:text-white'}`}>Explorer</button>
@@ -161,11 +159,6 @@ const App: React.FC = () => {
                   <p className="mt-4 text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center justify-center gap-2">
                     <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span> Analyzing Firewall Rules via n8n Agent
                   </p>
-                  <div className="mt-8 flex gap-2">
-                    <div className="w-1.5 h-1.5 bg-blue-200 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                    <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                    <div className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce"></div>
-                  </div>
                 </div>
               ) : report ? <AuditReport report={report} /> : (
                 <div className="bg-white rounded-2xl p-12 flex flex-col items-center justify-center min-h-[500px] border-dashed border-2 border-slate-200 text-center shadow-inner">
@@ -177,6 +170,8 @@ const App: React.FC = () => {
             </div>
           </div>
         )}
+
+        {activeTab === 'dashboard' && <DashboardTab reports={dbReports} />}
 
         {activeTab === 'archive' && (
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden min-h-[600px]">
