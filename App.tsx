@@ -17,7 +17,6 @@ const App: React.FC = () => {
   const [logFilter, setLogFilter] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   
-  // Shared configuration state across all tabs
   const [config, setConfig] = useState<AuditConfig>({
     ipAddress: '',
     apiKey: '',
@@ -61,7 +60,6 @@ const App: React.FC = () => {
   const handleJumpToLogs = (path: string) => {
     setLogFilter(path);
     setActiveTab('monitor');
-    // The shared 'config' state already contains the IP and Key from Explorer
   };
 
   useEffect(() => {
@@ -79,6 +77,7 @@ const App: React.FC = () => {
     setActiveTab('audit');
     
     try {
+      // 1. Trigger the n8n Agent via Backend Proxy
       const response = await fetch(`${API_BASE}/audit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -89,27 +88,18 @@ const App: React.FC = () => {
         const errData = await response.json().catch(() => ({}));
         throw new Error(errData.error || `Server Error: ${response.statusText}`);
       }
-      
-      const rawData = await response.json();
-      let n8nData = Array.isArray(rawData) ? rawData[0] : rawData;
-      if (!n8nData) throw new Error("Empty response from n8n agent.");
 
-      const normalizedFindings = (Array.isArray(n8nData.findings) ? n8nData.findings : []).map((f: any) => ({
-        ...f,
-        risk_level: f.risk_level || f.risk || f.riskLevel || 'Medium'
-      }));
+      // 2. Short delay to allow n8n to complete MySQL insertions
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
-      const normalizedReport = {
-        ...n8nData,
-        overall_score: n8nData.overall_score !== undefined ? n8nData.overall_score : (n8nData.overallScore || 0),
-        summary: n8nData.summary || n8nData.analysis || "Audit analysis complete.",
-        findings: normalizedFindings,
-        hostname: n8nData.hostname || n8nData.device_info?.hostname || auditConfig.ipAddress,
-        device_firmware: n8nData.device_firmware || n8nData.device_info?.firmware || 'Unknown'
-      };
-
-      setReport(normalizedReport);
-      fetchArchive();
+      // 3. Fetch the absolute latest record from the DB Archive
+      const updatedArchives = await fetchArchive();
+      if (updatedArchives && updatedArchives.length > 0) {
+        // Automatically load and display the newest report found in the database
+        await loadArchiveDetail(updatedArchives[0].id);
+      } else {
+        throw new Error("Audit finished but no record found in history database.");
+      }
     } catch (err: any) {
       setError(`Audit Failed: ${err.message}`);
     } finally {
@@ -122,7 +112,7 @@ const App: React.FC = () => {
       <nav className="bg-slate-900 text-white border-b border-slate-700 h-16 sticky top-0 z-50 shadow-xl">
         <div className="max-w-7xl mx-auto px-4 h-full flex items-center justify-between">
           <div className="flex items-center space-x-8">
-            <div className="flex items-center space-x-3 cursor-pointer" onClick={() => { setActiveTab('audit'); setReport(null); setError(null); fetchArchive(true); }}>
+            <div className="flex items-center space-x-3 cursor-pointer" onClick={() => { setActiveTab('audit'); fetchArchive(true); }}>
               <ShieldCheck className="w-8 h-8 text-blue-500" />
               <span className="text-xl font-bold tracking-tight">Sentinel <span className="text-blue-500 uppercase text-xs ml-1">PAN-OS</span></span>
             </div>
@@ -134,7 +124,7 @@ const App: React.FC = () => {
             </div>
           </div>
           <div className="hidden md:block text-[10px] bg-slate-800 px-3 py-1.5 rounded-full text-slate-400 font-mono border border-slate-700 uppercase tracking-widest">
-             Agent Active: 10.1.240.2
+             Management Proxy: 10.1.240.2
           </div>
         </div>
       </nav>
@@ -151,29 +141,37 @@ const App: React.FC = () => {
             <div className="lg:col-span-1">
               <SetupForm onSubmit={handleRunAudit} isLoading={isAuditing} initialValues={config} onConfigChange={setConfig} />
               {report && !isAuditing && report.id && (
-                <div className="mt-6 p-4 bg-blue-50/50 rounded-xl border border-blue-100 flex items-center justify-between">
+                <div className="mt-6 p-4 bg-slate-900 rounded-xl border border-slate-800 flex items-center justify-between shadow-lg">
                    <div className="flex items-center space-x-2">
-                     <History className="w-4 h-4 text-blue-500" />
-                     <span className="text-[10px] font-black text-blue-700 uppercase tracking-widest">Showing Saved Audit</span>
+                     <Database className="w-4 h-4 text-blue-400" />
+                     <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">DB History ID:</span>
                    </div>
-                   <span className="text-[10px] font-mono font-bold text-blue-400">#{report.id}</span>
+                   <span className="text-[10px] font-mono font-bold text-blue-400">REC_{report.id.toString().padStart(6, '0')}</span>
                 </div>
               )}
             </div>
             <div className="lg:col-span-2">
               {isAuditing ? (
                 <div className="bg-white rounded-2xl p-12 flex flex-col items-center justify-center min-h-[500px] border border-slate-200 shadow-sm text-center">
-                  <div className="w-16 h-16 border-4 border-blue-50 border-t-blue-600 rounded-full animate-spin mb-8"></div>
-                  <h3 className="text-lg font-black text-slate-900 uppercase tracking-widest">Orchestrating AI Audit</h3>
-                  <div className="mt-4 space-y-2">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center justify-center gap-2"><span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span> Analyzing Rulesets via n8n</p>
+                  <div className="relative mb-8">
+                    <div className="w-20 h-20 border-4 border-slate-50 border-t-blue-600 rounded-full animate-spin"></div>
+                    <Activity className="absolute inset-0 m-auto w-8 h-8 text-blue-600 animate-pulse" />
+                  </div>
+                  <h3 className="text-lg font-black text-slate-900 uppercase tracking-widest">Orchestrating Security Analysis</h3>
+                  <p className="mt-4 text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center justify-center gap-2">
+                    <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span> Analyzing Firewall Rules via n8n Agent
+                  </p>
+                  <div className="mt-8 flex gap-2">
+                    <div className="w-1.5 h-1.5 bg-blue-200 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                    <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                    <div className="w-1.5 h-1.5 bg-blue-600 rounded-full animate-bounce"></div>
                   </div>
                 </div>
               ) : report ? <AuditReport report={report} /> : (
                 <div className="bg-white rounded-2xl p-12 flex flex-col items-center justify-center min-h-[500px] border-dashed border-2 border-slate-200 text-center shadow-inner">
-                  <Activity className="w-16 h-16 text-slate-100 mb-4" />
-                  <h3 className="text-xl font-black text-slate-300 uppercase tracking-tight">Scanner Idle</h3>
-                  <p className="text-sm text-slate-400 mt-1">Initiate a new audit to begin.</p>
+                  <ShieldCheck className="w-16 h-16 text-slate-100 mb-4" />
+                  <h3 className="text-xl font-black text-slate-300 uppercase tracking-tight">System Ready</h3>
+                  <p className="text-sm text-slate-400 mt-1 uppercase tracking-widest font-bold">Initiate audit to start persistent scan</p>
                 </div>
               )}
             </div>
@@ -187,14 +185,17 @@ const App: React.FC = () => {
             </div>
             <div className="p-6">
               {dbReports.length > 0 ? (
-                <div className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {dbReports.map((r) => (
-                    <div key={r.id} onClick={() => loadArchiveDetail(r.id)} className={`p-4 border rounded-xl transition-all flex items-center justify-between cursor-pointer group ${report?.id === r.id ? 'border-blue-500 bg-blue-50/30' : 'border-slate-100 hover:border-blue-400 hover:bg-blue-50/20'}`}>
+                    <div key={r.id} onClick={() => loadArchiveDetail(r.id)} className={`p-4 border rounded-xl transition-all flex items-center justify-between cursor-pointer group ${report?.id === r.id ? 'border-blue-500 bg-blue-50/30' : 'border-slate-100 hover:border-blue-400 hover:bg-white hover:shadow-md'}`}>
                       <div className="flex items-center gap-4">
-                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center font-bold text-white shadow-sm ${r.overall_score > 60 ? 'bg-green-500' : r.overall_score > 40 ? 'bg-orange-500' : 'bg-red-500'}`}>{r.overall_score || 0}</div>
-                        <div><h4 className="font-bold text-slate-800 text-sm">{r.hostname || 'Device'} ({r.ip_address})</h4><div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5"><Clock className="w-3 h-3"/> {new Date(r.created_at).toLocaleString()}</div></div>
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-white shadow-lg ${r.overall_score > 60 ? 'bg-green-500' : r.overall_score > 40 ? 'bg-amber-500' : 'bg-red-500'}`}>{r.overall_score || 0}%</div>
+                        <div>
+                           <h4 className="font-bold text-slate-800 text-sm truncate max-w-[150px]">{r.hostname || r.ip_address}</h4>
+                           <div className="flex items-center gap-2 text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5"><Clock className="w-3 h-3"/> {new Date(r.created_at).toLocaleString()}</div>
+                        </div>
                       </div>
-                      <ChevronRight className={`w-5 h-5 transition-colors ${report?.id === r.id ? 'text-blue-500' : 'text-slate-300 group-hover:text-blue-500'}`} />
+                      <ChevronRight className={`w-5 h-5 transition-transform ${report?.id === r.id ? 'text-blue-500 translate-x-1' : 'text-slate-300 group-hover:text-blue-500 group-hover:translate-x-1'}`} />
                     </div>
                   ))}
                 </div>
