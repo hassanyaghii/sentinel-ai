@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Activity, RefreshCw, Filter, XCircle, Clock, Zap } from 'lucide-react';
+import { Activity, RefreshCw, Filter, XCircle, Clock, Zap, Server, Key, Search, Download } from 'lucide-react';
 import { AuditConfig } from '../types';
 
 const LOGS_API = "/api/logs";
@@ -21,11 +21,12 @@ interface ConfigLog {
 
 interface MonitorTabProps {
   config: AuditConfig;
+  onConfigChange: (config: AuditConfig) => void;
   initialFilter?: string | null;
   onClearFilter?: () => void;
 }
 
-const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialFilter, onClearFilter }) => {
+const MonitorTab: React.FC<MonitorTabProps> = ({ config, onConfigChange, initialFilter, onClearFilter }) => {
   const [logs, setLogs] = useState<ConfigLog[]>([]);
   const [isFetching, setIsFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,19 +49,23 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
     if (initialFilter) setActiveFilter(initialFilter);
   }, [initialFilter]);
 
-  const handleFetchLogs = async () => {
+  const handleFetchLogs = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!config.ipAddress || !config.apiKey) {
+      setError("Firewall IP and API Key are required to sync logs.");
+      return;
+    }
+    
     setIsFetching(true);
     setError(null);
     
     try {
-      console.log("Triggering n8n Telemetry Sync via Backend...");
-      // 1. Tell backend to trigger n8n and save to DB
       const response = await fetch(LOGS_API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          ipAddress: initialConfig.ipAddress, 
-          apiKey: initialConfig.apiKey
+          ipAddress: config.ipAddress, 
+          apiKey: config.apiKey
         })
       });
       
@@ -69,13 +74,9 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
         throw new Error(errData.error || "n8n Orchestration for logs failed");
       }
       
-      console.log("n8n Sync Successful. Re-fetching from database...");
-      // 2. Fetch the newly saved logs from MySQL
       await fetchLogsFromDB();
     } catch (err: any) {
-      console.error("Telemetry Sync Error:", err);
       setError(err.message || "Failed to sync with n8n agent @ 10.1.240.2");
-      // Fallback: try to load what we have in DB anyway
       await fetchLogsFromDB();
     } finally {
       setIsFetching(false);
@@ -109,31 +110,44 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
               </div>
               <p className="text-xs text-slate-400 font-medium tracking-widest uppercase flex items-center space-x-1">
                 <Zap className="w-3 h-3 text-amber-500" />
-                <span>Sync Flow: Agent → n8n → MySQL Database</span>
+                <span>Flow: Firewall → n8n → MySQL</span>
               </p>
             </div>
           </div>
           <button 
-            onClick={handleFetchLogs} 
+            onClick={() => handleFetchLogs()} 
             disabled={isFetching} 
             className="px-8 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest bg-slate-900 text-white hover:bg-black shadow-lg flex items-center space-x-3 transition-all active:scale-95 disabled:opacity-50"
           >
             {isFetching ? <RefreshCw className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            <span>{isFetching ? 'Syncing n8n...' : 'Trigger n8n Sync'}</span>
+            <span>{isFetching ? 'Syncing...' : 'Sync Logs Now'}</span>
           </button>
         </div>
         
-        <div className="flex items-center space-x-4 bg-slate-50 p-3 rounded-xl border border-slate-100">
-           <div className="flex-1">
-              <span className="text-[10px] block font-black text-slate-400 uppercase tracking-widest">Target IP</span>
-              <span className="text-xs font-mono font-bold text-slate-700">{initialConfig.ipAddress || 'Not Set'}</span>
+        {/* CREDENTIALS FORM */}
+        <form onSubmit={handleFetchLogs} className="flex items-center space-x-4 bg-slate-50 p-3 rounded-xl border border-slate-100">
+           <div className="flex-1 relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300"><Server className="w-4 h-4" /></span>
+              <input 
+                type="text" placeholder="Firewall IP" value={config.ipAddress} 
+                onChange={(e) => onConfigChange({...config, ipAddress: e.target.value})}
+                className="w-full bg-white pl-10 pr-4 py-2 text-xs font-mono font-bold border border-slate-200 rounded-lg outline-none focus:ring-1 focus:ring-blue-500"
+              />
+           </div>
+           <div className="flex-1 relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300"><Key className="w-4 h-4" /></span>
+              <input 
+                type="password" placeholder="API Key" value={config.apiKey} 
+                onChange={(e) => onConfigChange({...config, apiKey: e.target.value})}
+                className="w-full bg-white pl-10 pr-4 py-2 text-xs border border-slate-200 rounded-lg outline-none focus:ring-1 focus:ring-blue-500"
+              />
            </div>
            <div className="w-px h-8 bg-slate-200" />
-           <div className="flex-1">
-              <span className="text-[10px] block font-black text-slate-400 uppercase tracking-widest">DB Records</span>
+           <div className="px-4">
+              <span className="text-[10px] block font-black text-slate-400 uppercase tracking-widest">Records Found</span>
               <span className="text-xs font-bold text-slate-700">{logs.length}</span>
            </div>
-        </div>
+        </form>
       </div>
 
       <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
@@ -142,7 +156,7 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
           {isFetching && logs.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center space-y-4">
               <div className="w-12 h-12 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">n8n is collecting logs...</p>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Syncing Telemetry...</p>
             </div>
           ) : (
             <table className="min-w-full divide-y divide-slate-200">
@@ -176,7 +190,7 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config: initialConfig, initialF
                         <div className="text-[10px] font-mono line-clamp-1 text-slate-400 bg-slate-50 p-1 rounded italic">{log.config_path}</div>
                         {log.after_change && (
                           <div className="text-[10px] bg-emerald-50 text-emerald-700 p-2 rounded border border-emerald-100 font-mono">
-                             <span className="font-black mr-2">CHANGED TO:</span>{log.after_change}
+                             <span className="font-black mr-2">VALUE:</span>{log.after_change}
                           </div>
                         )}
                       </div>

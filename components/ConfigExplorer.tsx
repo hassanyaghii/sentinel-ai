@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Shield, RefreshCw, Database, List, ArrowRight, History, Code, X, FileText, AlertCircle, ShieldCheck, ShieldAlert, Download, Key, Search, Globe, ChevronRight } from 'lucide-react';
+import { AuditConfig } from '../types';
 
 const SNAPSHOTS_API = "/api/config-snapshots";
 const EXTRACTION_API = "/api/config"; 
@@ -26,18 +27,17 @@ interface InteractiveRule {
 
 interface ConfigExplorerProps {
   onJumpToLogs?: (path: string) => void;
+  sharedConfig: AuditConfig;
+  onConfigChange: (config: AuditConfig) => void;
 }
 
-const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs }) => {
+const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs, sharedConfig, onConfigChange }) => {
   const [configs, setConfigs] = useState<SavedSnapshot[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSourceModal, setShowSourceModal] = useState(false);
-
-  const [ipAddress, setIpAddress] = useState('');
-  const [apiKey, setApiKey] = useState('');
 
   const fetchSnapshots = async () => {
     setIsLoading(true);
@@ -59,7 +59,7 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs }) => {
 
   const handleRunExtraction = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!ipAddress || !apiKey) {
+    if (!sharedConfig.ipAddress || !sharedConfig.apiKey) {
       setError("Firewall IP and API Key are required.");
       return;
     }
@@ -69,13 +69,11 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs }) => {
       const response = await fetch(EXTRACTION_API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ipAddress, apiKey, vendor: 'paloalto' })
+        body: JSON.stringify({ ipAddress: sharedConfig.ipAddress, apiKey: sharedConfig.apiKey, vendor: 'paloalto' })
       });
       if (!response.ok) throw new Error("Extraction failed.");
       setTimeout(() => {
         fetchSnapshots();
-        setIpAddress('');
-        setApiKey('');
         setIsExtracting(false);
       }, 1500);
     } catch (err: any) {
@@ -128,7 +126,6 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs }) => {
 
   return (
     <div className="flex flex-col h-[85vh] space-y-4 relative">
-      {/* HEADER */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <div className="p-2.5 bg-slate-900 rounded-xl text-white shadow-lg"><Globe className="w-5 h-5" /></div>
@@ -151,9 +148,7 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs }) => {
       </div>
 
       <div className="flex-1 flex overflow-hidden gap-6">
-        {/* SIDEBAR */}
         <div className="w-80 flex flex-col space-y-4 shrink-0">
-          {/* EXTRACTION FORM */}
           <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
             <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
               <Download className="w-3 h-3" /> Pull New Snapshot
@@ -162,16 +157,16 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs }) => {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-300" />
                 <input 
-                  type="text" placeholder="Device IP" value={ipAddress} 
-                  onChange={(e) => setIpAddress(e.target.value)} 
+                  type="text" placeholder="Device IP" value={sharedConfig.ipAddress} 
+                  onChange={(e) => onConfigChange({...sharedConfig, ipAddress: e.target.value})} 
                   className="w-full pl-9 pr-3 py-2 text-[11px] border border-slate-100 rounded-xl outline-none focus:ring-1 focus:ring-blue-500 font-mono" 
                 />
               </div>
               <div className="relative">
                 <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-300" />
                 <input 
-                  type="password" placeholder="API Key" value={apiKey} 
-                  onChange={(e) => setApiKey(e.target.value)} 
+                  type="password" placeholder="API Key" value={sharedConfig.apiKey} 
+                  onChange={(e) => onConfigChange({...sharedConfig, apiKey: e.target.value})} 
                   className="w-full pl-9 pr-3 py-2 text-[11px] border border-slate-100 rounded-xl outline-none focus:ring-1 focus:ring-blue-500" 
                 />
               </div>
@@ -185,7 +180,6 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs }) => {
             </form>
           </div>
 
-          {/* HISTORY */}
           <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col p-3">
             <div className="flex items-center justify-between mb-3 px-1">
               <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Saved History</h4>
@@ -212,9 +206,7 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs }) => {
           </div>
         </div>
 
-        {/* MAIN DISPLAY: LIST VIEW */}
         <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
-          {/* TABLE HEADER */}
           <div className="px-6 py-4 bg-slate-50/50 border-b border-slate-100 grid grid-cols-12 gap-4 items-center">
              <div className="col-span-1 text-[10px] font-black text-slate-400 uppercase tracking-widest">Action</div>
              <div className="col-span-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Rule Name</div>
@@ -235,99 +227,44 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs }) => {
                 <div className="divide-y divide-slate-100">
                   {parsedRules.map((rule, idx) => (
                     <div key={idx} className="px-6 py-3.5 grid grid-cols-12 gap-4 items-center hover:bg-blue-50/30 transition-colors group">
-                        {/* ACTION */}
                         <div className="col-span-1">
                           <span className={`inline-flex items-center justify-center px-2 py-1 rounded text-[9px] font-black uppercase tracking-tighter ${rule.action === 'allow' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                              {rule.action === 'allow' ? <ShieldCheck className="w-3 h-3 mr-1" /> : <ShieldAlert className="w-3 h-3 mr-1" />}
                              {rule.action}
                           </span>
                         </div>
-
-                        {/* NAME */}
                         <div className="col-span-2">
                            <h5 className="font-bold text-slate-800 text-[11px] truncate group-hover:text-blue-600" title={rule.name}>{rule.name}</h5>
                            <p className="text-[8px] text-slate-400 font-bold uppercase truncate">{rule.from} → {rule.to}</p>
                         </div>
-
-                        {/* SOURCE */}
                         <div className="col-span-2 bg-blue-50/50 p-2 rounded-lg border border-blue-100/30">
                            <span className="text-[10px] font-bold text-blue-700 block truncate">{rule.source}</span>
                         </div>
-
-                        {/* DESTINATION */}
                         <div className="col-span-2 bg-emerald-50/50 p-2 rounded-lg border border-emerald-100/30">
                            <span className="text-[10px] font-bold text-emerald-700 block truncate">{rule.dest}</span>
                         </div>
-
-                        {/* APP */}
-                        <div className="col-span-2">
-                           <span className="text-[10px] font-bold text-slate-600 block truncate">{rule.application}</span>
-                        </div>
-
-                        {/* SERVICE */}
-                        <div className="col-span-2">
-                           <span className="text-[10px] font-bold text-slate-500 block truncate font-mono">{rule.service}</span>
-                        </div>
-
-                        {/* ACTIONS */}
+                        <div className="col-span-2 font-bold text-slate-600 text-[10px] truncate">{rule.application}</div>
+                        <div className="col-span-2 font-mono text-slate-500 text-[10px] truncate">{rule.service}</div>
                         <div className="col-span-1 flex justify-end">
-                           <button 
-                             onClick={() => onJumpToLogs?.(rule.name)}
-                             className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-100 rounded-lg transition-all"
-                             title="Drilldown Logs"
-                           >
-                             <History className="w-4 h-4" />
-                           </button>
+                           <button onClick={() => onJumpToLogs?.(rule.name)} className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-100 rounded-lg transition-all"><History className="w-4 h-4" /></button>
                         </div>
                     </div>
                   ))}
                 </div>
-             ) : (
-                <div className="h-full flex flex-col items-center justify-center opacity-20">
-                  <List className="w-16 h-16 mb-2" />
-                  <p className="text-xs font-black uppercase tracking-widest">No Rules Parsed</p>
-                </div>
-             )}
+             ) : <div className="h-full flex flex-col items-center justify-center opacity-20"><List className="w-16 h-16 mb-2" /><p className="text-xs font-black uppercase tracking-widest">No Rules Parsed</p></div>}
           </div>
-
-          {/* STATUS FOOTER */}
-          {selected && (
-            <div className="px-6 py-3 bg-slate-900 text-white flex justify-between items-center">
-               <div className="flex items-center space-x-4">
-                  <div className="flex items-center space-x-2">
-                     <span className="text-[9px] font-black text-slate-400 uppercase">Hostname:</span>
-                     <span className="text-[10px] font-bold text-blue-400">{selected.hostname}</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                     <span className="text-[9px] font-black text-slate-400 uppercase">Captured:</span>
-                     <span className="text-[10px] font-bold text-slate-200">{new Date(selected.created_at).toLocaleString()}</span>
-                  </div>
-               </div>
-               <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  Total Rules: {parsedRules.length}
-               </div>
-            </div>
-          )}
         </div>
       </div>
 
-      {/* RAW XML MODAL */}
       {showSourceModal && selected && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-8">
           <div className="bg-slate-900 w-full max-w-6xl h-full max-h-[85vh] rounded-3xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col">
             <div className="p-4 border-b border-white/5 flex justify-between items-center bg-black/40">
-              <div className="flex items-center space-x-3">
-                <Code className="w-4 h-4 text-blue-400" />
-                <span className="text-xs font-black text-white uppercase tracking-widest">Snapshot Source XML</span>
-              </div>
+              <div className="flex items-center space-x-3"><Code className="w-4 h-4 text-blue-400" /><span className="text-xs font-black text-white uppercase tracking-widest">Snapshot Source XML</span></div>
               <button onClick={() => setShowSourceModal(false)} className="p-2 text-slate-400 hover:text-white rounded-xl"><X className="w-5 h-5" /></button>
             </div>
-            <div className="flex-1 overflow-auto p-8 custom-scrollbar">
-              <pre className="text-[11px] font-mono text-blue-100/60 whitespace-pre-wrap leading-relaxed">{selected.raw_xml}</pre>
-            </div>
-            <div className="p-4 bg-black/40 border-t border-white/5 flex justify-end">
-              <button onClick={() => setShowSourceModal(false)} className="px-6 py-2 bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl">Close</button>
-            </div>
+            <div className="flex-1 overflow-auto p-8 custom-scrollbar"><pre className="text-[11px] font-mono text-blue-100/60 whitespace-pre-wrap leading-relaxed">{selected.raw_xml}</pre></div>
+            <div className="p-4 bg-black/40 border-t border-white/5 flex justify-end"><button onClick={() => setShowSourceModal(false)} className="px-6 py-2 bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl">Close</button></div>
           </div>
         </div>
       )}
