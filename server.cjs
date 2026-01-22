@@ -43,7 +43,6 @@ initDB();
  * 1. AI AUDIT PROXY
  */
 app.post("/api/audit", async (req, res) => {
-  console.log("🚀 Proxying Audit request to n8n...");
   try {
     const response = await fetch(N8N_AUDIT_URL, {
       method: 'POST',
@@ -61,7 +60,6 @@ app.post("/api/audit", async (req, res) => {
  * 2. CONFIG FETCH PROXY
  */
 app.post("/api/config", async (req, res) => {
-  console.log("🚀 Proxying Config Fetch to n8n...");
   try {
     const response = await fetch(N8N_CONFIG_URL, {
       method: 'POST',
@@ -76,7 +74,32 @@ app.post("/api/config", async (req, res) => {
 });
 
 /**
- * 3. SNAPSHOT READ ACCESS - The table you showed in the screenshot
+ * 3. LOG SYNC PROXY (New)
+ */
+app.post("/api/logs", async (req, res) => {
+  console.log("🚀 Proxying Log Sync request to n8n...");
+  try {
+    const response = await fetch(N8N_LOGS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body)
+    });
+    
+    if (!response.ok) {
+      const errText = await response.text();
+      return res.status(response.status).json({ error: `n8n Error: ${errText}` });
+    }
+    
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    console.error("Sync error:", err);
+    res.status(500).json({ error: "Backend failed to communicate with n8n log agent" });
+  }
+});
+
+/**
+ * 4. DB READ ACCESS
  */
 app.get("/api/config-snapshots", async (req, res) => {
   try {
@@ -87,9 +110,6 @@ app.get("/api/config-snapshots", async (req, res) => {
   }
 });
 
-/**
- * 4. LOG READ ACCESS
- */
 app.get("/api/logs", async (req, res) => {
   try {
     const [rows] = await pool.execute("SELECT * FROM firewall_logs ORDER BY receive_time DESC LIMIT 500");
