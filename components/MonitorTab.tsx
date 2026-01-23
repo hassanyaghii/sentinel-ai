@@ -105,7 +105,7 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config, onConfigChange, initial
             <div className="p-3 rounded-xl text-white shadow-lg bg-blue-600"><Activity className="w-6 h-6" /></div>
             <div>
               <div className="flex items-center space-x-2">
-                <h2 className="text-xl font-black text-slate-900 tracking-tight uppercase">Audit Logs (n8n Managed)</h2>
+                <h2 className="text-xl font-black text-slate-900 tracking-tight uppercase">Audit Logs</h2>
                 {activeFilter && (
                   <div className="flex items-center space-x-2 bg-blue-100 text-blue-700 px-3 py-1 rounded-full border border-blue-200 shadow-sm">
                     <Filter className="w-3 h-3" />
@@ -114,10 +114,6 @@ const MonitorTab: React.FC<MonitorTabProps> = ({ config, onConfigChange, initial
                   </div>
                 )}
               </div>
-              <p className="text-xs text-slate-400 font-medium tracking-widest uppercase flex items-center space-x-1 mt-1">
-                <Zap className="w-3 h-3 text-amber-500" />
-                <span>Sync Pipeline: Firewall → n8n Agent → MySQL DB</span>
-              </p>
             </div>
           </div>
           <button 

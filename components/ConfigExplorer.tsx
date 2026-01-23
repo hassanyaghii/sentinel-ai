@@ -200,7 +200,7 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs, sharedCon
           <div>
             <h2 className="text-lg font-black text-slate-900 tracking-widest uppercase">Config Explorer</h2>
             <p className="text-xs text-slate-400 font-medium uppercase tracking-tighter flex items-center gap-1">
-              <Database className="w-3 h-3" /> SNAPSHOT_RELIANCE {isCompareMode && <span className="text-blue-600 ml-1 font-black">COMPARE ACTIVE</span>}
+              <Database className="w-3 h-3" /> {isCompareMode && <span className="text-blue-600 ml-1 font-black">COMPARE ACTIVE</span>}
             </p>
           </div>
         </div>

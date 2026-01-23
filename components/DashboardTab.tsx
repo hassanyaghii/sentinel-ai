@@ -19,8 +19,7 @@ import {
   ShieldCheck,
   AlertCircle, 
   Server, 
-  Calendar,
-  MousePointer2
+  Calendar
 } from 'lucide-react';
 
 interface DashboardTabProps {
@@ -94,9 +93,6 @@ const DashboardTab: React.FC<DashboardTabProps> = ({ reports }) => {
           <div className="p-3 bg-blue-600 rounded-2xl text-white shadow-lg"><Activity className="w-6 h-6" /></div>
           <div>
             <h2 className="text-xl font-black text-slate-900 tracking-tight uppercase">Security Posture Trends</h2>
-            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest flex items-center gap-1 mt-1">
-              <Calendar className="w-3 h-3" /> Time-Series Historical Analysis
-            </p>
           </div>
         </div>
 
@@ -162,7 +158,6 @@ const DashboardTab: React.FC<DashboardTabProps> = ({ reports }) => {
         <div className="flex items-center justify-between mb-8">
            <div>
               <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Score over Time</h3>
-              <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Correlation of configuration hardening audits</p>
            </div>
            <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
@@ -216,16 +211,6 @@ const DashboardTab: React.FC<DashboardTabProps> = ({ reports }) => {
             </div>
           )}
         </div>
-      </div>
-
-      <div className="bg-blue-50/50 border border-blue-100 p-6 rounded-2xl flex items-start gap-4">
-         <MousePointer2 className="w-6 h-6 text-blue-600 mt-1" />
-         <div>
-            <h4 className="font-black text-blue-900 text-sm uppercase tracking-widest">Interactive Audit Intelligence</h4>
-            <p className="text-xs text-blue-800/70 leading-relaxed mt-1 font-medium">
-              The chart above visualizes the stability of your firewall configuration. Dips in the score often correlate with unauthorized rule additions or management protocol changes. Hover over any node to see the specific audit record ID and timestamp from the MySQL history.
-            </p>
-         </div>
       </div>
     </div>
   );

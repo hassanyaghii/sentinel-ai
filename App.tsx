@@ -197,9 +197,7 @@ const App: React.FC = () => {
           </div>
           
           <div className="flex items-center space-x-4">
-            <div className="hidden md:block text-[10px] bg-slate-100 px-3 py-1.5 rounded-full text-slate-500 font-mono border border-slate-200 uppercase tracking-widest">
-               Local Node: 10.1.244.70
-            </div>
+            {/* Unnecessary words removed here */}
           </div>
         </header>
 
