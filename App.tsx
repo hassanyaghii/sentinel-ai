@@ -25,7 +25,8 @@ import { AuditConfig } from './types';
 const API_BASE = "/api";
 
 const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'audit' | 'archive' | 'explorer' | 'monitor' | 'dashboard'>('audit');
+  // Set Dashboard as the default tab as requested
+  const [activeTab, setActiveTab] = useState<'audit' | 'archive' | 'explorer' | 'monitor' | 'dashboard'>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isAuditing, setIsAuditing] = useState(false);
   const [report, setReport] = useState<any>(null);
@@ -46,7 +47,7 @@ const App: React.FC = () => {
       if (response.ok) {
         const data = await response.json();
         setDbReports(data);
-        if (loadLatest && data.length > 0) {
+        if (loadLatest && data.length > 0 && activeTab === 'audit') {
           await loadArchiveDetail(data[0].id);
         }
         return data;
@@ -119,12 +120,13 @@ const App: React.FC = () => {
     }
   };
 
+  // Reordered and relabeled nav items
   const navItems = [
-    { id: 'audit', label: 'AI Audit', icon: ShieldCheck },
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'audit', label: 'AI Audit', icon: ShieldCheck },
+    { id: 'explorer', label: 'Config Explorer', icon: Search },
+    { id: 'monitor', label: 'Configuration Logs', icon: Activity },
     { id: 'archive', label: 'Archive', icon: Database },
-    { id: 'monitor', label: 'Telemetry', icon: Activity },
-    { id: 'explorer', label: 'Explorer', icon: Search },
   ] as const;
 
   return (
@@ -149,7 +151,7 @@ const App: React.FC = () => {
             <button
               key={item.id}
               onClick={() => {
-                setActiveTab(item.id);
+                setActiveTab(item.id as any);
                 if (item.id === 'audit') setError(null);
               }}
               className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all group ${
@@ -211,6 +213,8 @@ const App: React.FC = () => {
               </div>
             )}
 
+            {activeTab === 'dashboard' && <DashboardTab reports={dbReports} />}
+
             {activeTab === 'audit' && (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-1">
@@ -248,7 +252,9 @@ const App: React.FC = () => {
               </div>
             )}
 
-            {activeTab === 'dashboard' && <DashboardTab reports={dbReports} />}
+            {activeTab === 'explorer' && <ConfigExplorer onJumpToLogs={handleJumpToLogs} sharedConfig={config} onConfigChange={setConfig} />}
+            
+            {activeTab === 'monitor' && <MonitorTab config={config} onConfigChange={setConfig} initialFilter={logFilter} onClearFilter={() => setLogFilter(null)} />}
 
             {activeTab === 'archive' && (
               <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden min-h-[600px]">
@@ -275,9 +281,6 @@ const App: React.FC = () => {
                 </div>
               </div>
             )}
-
-            {activeTab === 'explorer' && <ConfigExplorer onJumpToLogs={handleJumpToLogs} sharedConfig={config} onConfigChange={setConfig} />}
-            {activeTab === 'monitor' && <MonitorTab config={config} onConfigChange={setConfig} initialFilter={logFilter} onClearFilter={() => setLogFilter(null)} />}
           </div>
         </main>
       </div>

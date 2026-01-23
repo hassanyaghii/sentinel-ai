@@ -3,7 +3,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Shield, RefreshCw, Database, List, ArrowRight, History, 
   Code, X, FileText, AlertCircle, ShieldCheck, ShieldAlert, 
-  Download, Key, Search, Globe, ChevronRight, Copy, Diff, Columns, Layers, Plus, Trash, Edit3
+  Download, Key, Search, Globe, ChevronRight, Copy, Diff, Columns, Layers, Plus, Trash, Edit3,
+  ArrowDownRight, CornerRightDown
 } from 'lucide-react';
 import { AuditConfig } from '../types';
 
@@ -39,6 +40,21 @@ interface ConfigExplorerProps {
   sharedConfig: AuditConfig;
   onConfigChange: (config: AuditConfig) => void;
 }
+
+const DiffValue: React.FC<{ current: string, previous?: string, isChanged: boolean }> = ({ current, previous, isChanged }) => {
+  if (!isChanged || previous === undefined) {
+    return <div className="text-[10px] font-bold text-slate-700 truncate">{current}</div>;
+  }
+  return (
+    <div className="flex flex-col space-y-0.5">
+      <div className="text-[9px] font-bold text-rose-500 line-through opacity-70 truncate decoration-2">{previous}</div>
+      <div className="text-[10px] font-black text-emerald-700 flex items-center gap-1">
+        <ArrowDownRight className="w-2.5 h-2.5" />
+        <span className="truncate">{current}</span>
+      </div>
+    </div>
+  );
+};
 
 const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs, sharedConfig, onConfigChange }) => {
   const [configs, setConfigs] = useState<SavedSnapshot[]>([]);
@@ -164,7 +180,6 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs, sharedCon
       }
     });
 
-    // Sort to show changes first
     return result.sort((a, b) => {
       if (a.status === b.status) return a.name.localeCompare(b.name);
       const order = { added: 0, removed: 1, modified: 2, unchanged: 3 };
@@ -183,9 +198,9 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs, sharedCon
         <div className="flex items-center space-x-3">
           <div className="p-2.5 bg-slate-900 rounded-xl text-white shadow-lg"><Globe className="w-5 h-5" /></div>
           <div>
-            <h2 className="text-lg font-black text-slate-900 tracking-widest uppercase">Policy Explorer</h2>
+            <h2 className="text-lg font-black text-slate-900 tracking-widest uppercase">Config Explorer</h2>
             <p className="text-xs text-slate-400 font-medium uppercase tracking-tighter flex items-center gap-1">
-              <Database className="w-3 h-3" /> config_snapshots {isCompareMode && <span className="text-blue-600 ml-1 font-black underline">COMPARE: A → B</span>}
+              <Database className="w-3 h-3" /> SNAPSHOT_RELIANCE {isCompareMode && <span className="text-blue-600 ml-1 font-black">COMPARE ACTIVE</span>}
             </p>
           </div>
         </div>
@@ -199,7 +214,7 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs, sharedCon
             className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${isCompareMode ? 'bg-blue-600 text-white shadow-lg' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
           >
             <Diff className="w-3.5 h-3.5" />
-            <span>{isCompareMode ? 'Exit Compare' : 'Compare Rules'}</span>
+            <span>{isCompareMode ? 'Disable Comparison' : 'Compare Snapshots'}</span>
           </button>
           
           {selected && (
@@ -208,7 +223,7 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs, sharedCon
               className="flex items-center space-x-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-colors"
             >
               <Code className="w-3.5 h-3.5" />
-              <span>View XML</span>
+              <span>XML Source</span>
             </button>
           )}
         </div>
@@ -218,9 +233,7 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs, sharedCon
         {/* SIDEBAR */}
         <div className="w-80 flex flex-col space-y-4 shrink-0">
           <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-              <Download className="w-3 h-3" /> New Capture
-            </h3>
+            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Live Extraction</h3>
             <form onSubmit={handleRunExtraction} className="space-y-2">
               <input 
                 type="text" placeholder="IP Address" value={sharedConfig.ipAddress} 
@@ -237,14 +250,14 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs, sharedCon
                 className="w-full py-2 bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl flex items-center justify-center space-x-2 shadow-lg hover:bg-blue-700 disabled:bg-slate-200 transition-all"
               >
                 {isExtracting ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
-                <span>{isExtracting ? 'Fetching...' : 'Extract Snapshot'}</span>
+                <span>{isExtracting ? 'Syncing...' : 'Fetch Configuration'}</span>
               </button>
             </form>
           </div>
 
           <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col p-3">
             <div className="flex items-center justify-between mb-3 px-1">
-              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Snapshot History</h4>
+              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Saved Snapshots</h4>
               <button onClick={fetchSnapshots} className="p-1 hover:bg-slate-50 rounded"><RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} /></button>
             </div>
             <div className="flex-1 overflow-auto space-y-2 custom-scrollbar pr-1">
@@ -286,14 +299,14 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs, sharedCon
 
         {/* MAIN AREA */}
         <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
-          <div className="px-6 py-4 bg-slate-50/50 border-b border-slate-100 grid grid-cols-12 gap-4 items-center sticky top-0 z-10">
+          <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 grid grid-cols-12 gap-4 items-center sticky top-0 z-10">
              <div className="col-span-1 text-[10px] font-black text-slate-400 uppercase tracking-widest">Action</div>
-             <div className="col-span-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Rule Name & Delta Status</div>
-             <div className="col-span-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Source</div>
-             <div className="col-span-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Destination</div>
-             <div className="col-span-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Application / Service</div>
+             <div className="col-span-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Policy Target & Delta</div>
+             <div className="col-span-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Source Objects</div>
+             <div className="col-span-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Destination Objects</div>
+             <div className="col-span-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Apps / Services</div>
              <div className="col-span-2 flex justify-end">
-                {isCompareMode && <span className="text-[9px] font-black text-blue-600 uppercase tracking-tighter bg-blue-50 px-2 py-0.5 rounded">Delta Detection Active</span>}
+                {isCompareMode && <span className="text-[9px] font-black text-blue-600 uppercase tracking-tighter bg-blue-100/50 px-3 py-1 rounded-full">Comparison Enabled</span>}
              </div>
           </div>
 
@@ -301,69 +314,91 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs, sharedCon
             {isLoading ? (
               <div className="h-full flex flex-col items-center justify-center space-y-3">
                  <div className="w-10 h-10 border-4 border-slate-100 border-t-blue-600 rounded-full animate-spin"></div>
-                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Parsing Rulebase...</p>
+                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Building Comparison Table...</p>
               </div>
             ) : (isCompareMode ? comparedResults : baseRules).length > 0 ? (
               <div className="divide-y divide-slate-100">
                 {(isCompareMode ? (comparedResults as ComparedRule[]) : (baseRules as ComparedRule[])).map((rule, idx) => {
                   const status = isCompareMode ? rule.status : 'unchanged';
                   const isModified = status === 'modified';
+                  const isAdded = status === 'added';
+                  const isRemoved = status === 'removed';
                   
                   return (
-                    <div key={idx} className={`px-6 py-4 grid grid-cols-12 gap-4 items-center transition-all group ${status === 'added' ? 'bg-green-50/50' : status === 'removed' ? 'bg-red-50/50 opacity-60' : 'hover:bg-blue-50/30'}`}>
-                        <div className="col-span-1">
-                          <span className={`inline-flex items-center justify-center px-2 py-1 rounded text-[9px] font-black uppercase tracking-tighter ${rule.action === 'allow' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                    <div 
+                      key={idx} 
+                      className={`px-6 py-4 grid grid-cols-12 gap-4 items-start transition-all border-l-4 ${
+                        isAdded ? 'bg-emerald-50 border-emerald-500' : 
+                        isRemoved ? 'bg-rose-50 border-rose-500 opacity-60' : 
+                        isModified ? 'bg-amber-50/60 border-amber-400' : 
+                        'border-transparent hover:bg-slate-50/50'
+                      }`}
+                    >
+                        {/* ACTION */}
+                        <div className="col-span-1 pt-1">
+                          <span className={`inline-flex items-center justify-center px-2 py-1 rounded text-[9px] font-black uppercase tracking-tighter ${
+                            rule.action === 'allow' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+                          }`}>
                              {rule.action}
                           </span>
                         </div>
+
+                        {/* NAME & STATUS */}
                         <div className="col-span-3">
-                           <div className="flex items-center gap-2">
-                              <h5 className="font-bold text-slate-800 text-[11px] truncate group-hover:text-blue-600">{rule.name}</h5>
-                              {status === 'added' && <Plus className="w-3 h-3 text-green-600" />}
-                              {status === 'removed' && <Trash className="w-3 h-3 text-red-600" />}
-                              {status === 'modified' && <Edit3 className="w-3 h-3 text-amber-600" />}
+                           <div className="flex flex-wrap items-center gap-2 mb-1">
+                              <h5 className={`font-bold text-[11px] truncate ${isRemoved ? 'line-through text-slate-400' : 'text-slate-800'}`}>
+                                {rule.name}
+                              </h5>
+                              {isAdded && <span className="text-[8px] bg-emerald-600 text-white px-1.5 py-0.5 rounded font-black uppercase tracking-widest">Added</span>}
+                              {isRemoved && <span className="text-[8px] bg-rose-600 text-white px-1.5 py-0.5 rounded font-black uppercase tracking-widest">Removed</span>}
+                              {isModified && <span className="text-[8px] bg-amber-600 text-white px-1.5 py-0.5 rounded font-black uppercase tracking-widest">Modified</span>}
                            </div>
-                           <p className="text-[8px] text-slate-400 font-bold uppercase truncate">{rule.from} → {rule.to}</p>
+                           <p className="text-[8px] text-slate-400 font-bold uppercase truncate flex items-center gap-1">
+                              {rule.from} <ArrowRight className="w-2 h-2" /> {rule.to}
+                           </p>
                         </div>
 
-                        {/* SOURCE */}
-                        <div className="col-span-2 relative group/cell">
-                          <div className={`p-2 rounded-lg border text-[10px] font-bold truncate transition-all ${isModified && rule.source !== rule.oldValue?.source ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-blue-100/30 bg-blue-50/50 text-blue-700'}`}>
-                             {rule.source}
-                          </div>
-                          {isModified && rule.source !== rule.oldValue?.source && (
-                            <div className="absolute top-full left-0 z-20 bg-slate-900 text-white p-2 rounded text-[9px] shadow-xl opacity-0 group-hover/cell:opacity-100 transition-opacity whitespace-nowrap pointer-events-none mt-1">
-                               Prev: <span className="line-through opacity-50">{rule.oldValue?.source}</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* DESTINATION */}
-                        <div className="col-span-2 relative group/cell">
-                          <div className={`p-2 rounded-lg border text-[10px] font-bold truncate transition-all ${isModified && rule.dest !== rule.oldValue?.dest ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-emerald-100/30 bg-emerald-50/50 text-emerald-700'}`}>
-                             {rule.dest}
-                          </div>
-                          {isModified && rule.dest !== rule.oldValue?.dest && (
-                            <div className="absolute top-full left-0 z-20 bg-slate-900 text-white p-2 rounded text-[9px] shadow-xl opacity-0 group-hover/cell:opacity-100 transition-opacity whitespace-nowrap pointer-events-none mt-1">
-                               Prev: <span className="line-through opacity-50">{rule.oldValue?.dest}</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* APP / SERVICE */}
+                        {/* SOURCE (DIFF) */}
                         <div className="col-span-2">
-                           <div className={`text-[10px] font-bold truncate ${isModified && rule.application !== rule.oldValue?.application ? 'text-amber-600' : 'text-slate-600'}`}>
-                              {rule.application}
-                           </div>
-                           <div className={`text-[9px] font-mono truncate ${isModified && rule.service !== rule.oldValue?.service ? 'text-amber-500' : 'text-slate-400'}`}>
-                              {rule.service}
+                          <DiffValue 
+                            current={rule.source} 
+                            previous={isModified ? rule.oldValue?.source : undefined} 
+                            isChanged={isModified && rule.source !== rule.oldValue?.source} 
+                          />
+                        </div>
+
+                        {/* DESTINATION (DIFF) */}
+                        <div className="col-span-2">
+                          <DiffValue 
+                            current={rule.dest} 
+                            previous={isModified ? rule.oldValue?.dest : undefined} 
+                            isChanged={isModified && rule.dest !== rule.oldValue?.dest} 
+                          />
+                        </div>
+
+                        {/* APPS / SERVICES (DIFF) */}
+                        <div className="col-span-2">
+                           <DiffValue 
+                             current={rule.application} 
+                             previous={isModified ? rule.oldValue?.application : undefined} 
+                             isChanged={isModified && rule.application !== rule.oldValue?.application} 
+                           />
+                           <div className="mt-1">
+                             <DiffValue 
+                               current={rule.service} 
+                               previous={isModified ? rule.oldValue?.service : undefined} 
+                               isChanged={isModified && rule.service !== rule.oldValue?.service} 
+                             />
                            </div>
                         </div>
 
+                        {/* ACTIONS */}
                         <div className="col-span-2 flex justify-end gap-1">
-                           <button onClick={() => onJumpToLogs?.(rule.name)} className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-100 rounded-lg transition-all" title="View Logs"><History className="w-4 h-4" /></button>
+                           <button onClick={() => onJumpToLogs?.(rule.name)} className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-100 rounded-lg transition-all" title="Review Logs"><History className="w-4 h-4" /></button>
                            {isModified && (
-                              <button className="p-2 text-amber-400 hover:bg-amber-50 rounded-lg transition-all" title="Review Delta"><AlertCircle className="w-4 h-4" /></button>
+                              <div className="p-2 text-amber-500 rounded-lg animate-pulse" title="Security Change Detected">
+                                <AlertCircle className="w-4 h-4" />
+                              </div>
                            )}
                         </div>
                     </div>
@@ -372,8 +407,8 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs, sharedCon
               </div>
             ) : (
               <div className="h-full flex flex-col items-center justify-center opacity-20">
-                {isCompareMode ? <Columns className="w-16 h-16 mb-2" /> : <List className="w-16 h-16 mb-2" />}
-                <p className="text-xs font-black uppercase tracking-widest">{isCompareMode ? 'Select Snapshot B for Comparison' : 'No Policy Data Extracted'}</p>
+                <Columns className="w-16 h-16 mb-2 text-slate-400" />
+                <p className="text-xs font-black uppercase tracking-widest">Select target snapshot</p>
               </div>
             )}
           </div>
@@ -381,17 +416,17 @@ const ConfigExplorer: React.FC<ConfigExplorerProps> = ({ onJumpToLogs, sharedCon
       </div>
 
       {showSourceModal && selected && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-8">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/95 backdrop-blur-md p-8">
           <div className="bg-slate-900 w-full max-w-6xl h-full max-h-[85vh] rounded-3xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col">
             <div className="p-4 border-b border-white/5 flex justify-between items-center bg-black/40">
-              <div className="flex items-center space-x-3"><Code className="w-4 h-4 text-blue-400" /><span className="text-xs font-black text-white uppercase tracking-widest">Snapshot Source: {selected.hostname}</span></div>
+              <div className="flex items-center space-x-3"><Code className="w-4 h-4 text-blue-400" /><span className="text-xs font-black text-white uppercase tracking-widest">XML Context: {selected.hostname}</span></div>
               <button onClick={() => setShowSourceModal(false)} className="p-2 text-slate-400 hover:text-white rounded-xl"><X className="w-5 h-5" /></button>
             </div>
             <div className="flex-1 overflow-auto p-8 custom-scrollbar">
               <pre className="text-[11px] font-mono text-blue-100/60 whitespace-pre-wrap leading-relaxed">{selected.raw_xml}</pre>
             </div>
             <div className="p-4 bg-black/40 border-t border-white/5 flex justify-end">
-              <button onClick={() => setShowSourceModal(false)} className="px-6 py-2 bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl">Close</button>
+              <button onClick={() => setShowSourceModal(false)} className="px-6 py-2 bg-blue-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl">Dismiss</button>
             </div>
           </div>
         </div>

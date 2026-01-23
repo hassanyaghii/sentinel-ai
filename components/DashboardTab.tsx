@@ -16,6 +16,7 @@ import {
   TrendingDown, 
   Activity, 
   Shield, 
+  ShieldCheck,
   AlertCircle, 
   Server, 
   Calendar,
@@ -57,16 +58,16 @@ const DashboardTab: React.FC<DashboardTabProps> = ({ reports }) => {
   }, [selectedDevice, reports]);
 
   const stats = useMemo(() => {
-    if (deviceData.length === 0) return { avg: 0, latest: 0, trend: 'stable' };
+    if (deviceData.length === 0) return { best: 0, latest: 0, trend: 'stable' };
     const latest = deviceData[deviceData.length - 1].score;
-    const avg = Math.round(deviceData.reduce((acc, curr) => acc + curr.score, 0) / deviceData.length);
+    const best = Math.max(...deviceData.map(d => d.score));
     let trend = 'stable';
     if (deviceData.length > 1) {
       const prev = deviceData[deviceData.length - 2].score;
       if (latest > prev) trend = 'up';
       else if (latest < prev) trend = 'down';
     }
-    return { avg, latest, trend };
+    return { best, latest, trend };
   }, [deviceData]);
 
   const CustomTooltip = ({ active, payload, label }: any) => {
@@ -134,12 +135,12 @@ const DashboardTab: React.FC<DashboardTabProps> = ({ reports }) => {
         </div>
 
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden group">
-          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Activity className="w-16 h-16" /></div>
-          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Historical Average</span>
+          <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><ShieldCheck className="w-16 h-16 text-emerald-500" /></div>
+          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Best Audit Score</span>
           <div className="flex items-baseline gap-2 mt-2">
-            <span className="text-4xl font-black text-slate-900 tracking-tighter">{stats.avg}%</span>
+            <span className="text-4xl font-black text-slate-900 tracking-tighter">{stats.best}%</span>
           </div>
-          <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Calculated over {deviceData.length} records</p>
+          <p className="text-[10px] text-slate-400 font-bold uppercase mt-2">Peak security posture achieved</p>
         </div>
 
         <div className="bg-slate-900 p-6 rounded-2xl shadow-xl relative overflow-hidden group border border-slate-800">
